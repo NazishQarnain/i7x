@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Nearby News &amp; Alert System - App</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <!-- Navbar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">🌓</button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
+    <div class="app-container">
+      <header class="app-header">
+        <h1>Nearby News &amp; Alert System</h1>
+        <p id="userInfo">Not logged in.</p>
+      </header>
+
+      <main class="app-main">
+        <!-- Account -->
+        <section class="panel">
+          <h2>Account</h2>
+          <input
+            id="emailInput"
+            type="email"
+            placeholder="Email"
+          />
+          <input
+            id="passwordInput"
+            type="password"
+            placeholder="Password"
+          />
+
+          <div class="btn-row">
+            <button id="signupBtn">Sign up</button>
+            <button id="loginBtn">Login</button>
+            <button
+              id="logoutBtn"
+              style="display: none;"
+            >
+              Logout
+            </button>
+          </div>
+        </section>
+
+        <!-- Create News -->
+        <section class="panel app-section">
+          <h2>Create News</h2>
+          <input
+            id="titleInput"
+            type="text"
+            placeholder="Title"
+          />
+          <textarea
+            id="contentInput"
+            placeholder="Details"
+            rows="3"
+          ></textarea>
+          <input
+            id="imageInput"
+            type="file"
+            accept="image/*"
+          />
+          <button id="postBtn" class="full-width">
+            Post with my location
+          </button>
+        </section>
+
+        <!-- Nearby News list -->
+        <section class="panel panel-wide app-section">
+          <div class="list-header">
+            <h2>Nearby News</h2>
+            <button id="loadNearbyBtn" class="small-btn">
+              Load nearby news
+            </button>
+          </div>
+          <ul id="newsList"></ul>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <small>Built by isevenx</small>
+      </footer>
+    </div>
+
+    <!-- Firebase v8 (same project as index.html) -->
+    <script
+      src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"
+      defer
+    ></script>
+    <script
+      src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"
+      defer
+    ></script>
+    <script
+      src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"
+      defer
+    ></script>
+
+    <!-- Config + app logic -->
+    <script src="firebaseConfig.js" defer></script>
+    <script src="app.js" defer></script>
+
+    <!-- Navbar JS -->
+    <script src="nav.js" defer></script>
+  </body>
+</html>

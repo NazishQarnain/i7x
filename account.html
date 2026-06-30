@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Nearby News - My Account</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <!-- Navbar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">🌓</button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
+    <main class="account-container">
+      <section class="panel">
+        <h2>My Profile</h2>
+        <p id="acctStatus" class="auth-status">Checking login...</p>
+
+        <div id="acctInfo" style="margin-top:8px; font-size:14px; color:#374151; display:none;">
+          <p style="margin:4px 0;">
+            <strong>Email:</strong>
+            <span id="acctEmail"></span>
+          </p>
+          <p style="margin:4px 0;">
+            <strong>User ID:</strong>
+            <span id="acctUid"></span>
+          </p>
+        </div>
+
+        <button id="acctLogoutBtn" class="full-width" style="margin-top:10px; display:none;">
+          Logout
+        </button>
+      </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3>My Posts</h3>
+        <p style="font-size:13px; color:#4b5563;">
+          These are the latest posts created from your account (max 30).
+        </p>
+        <div id="myPostsWrapper" style="margin-top:8px; font-size:13px;"></div>
+      </section>
+    </main>
+
+    <!-- Firebase v8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebaseConfig.js"></script>
+
+    <!-- Navbar JS -->
+    <script src="nav.js" defer></script>
+
+    <script>
+      const db = firebase.firestore();
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const statusEl = document.getElementById("acctStatus");
+        const infoBox = document.getElementById("acctInfo");
+        const emailEl = document.getElementById("acctEmail");
+        const uidEl = document.getElementById("acctUid");
+        const logoutBtn = document.getElementById("acctLogoutBtn");
+        const myPostsWrapper = document.getElementById("myPostsWrapper");
+
+        function escapeHtml(str) {
+          return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        }
+
+        function renderMyPosts(docs) {
+          if (!myPostsWrapper) return;
+
+          if (!docs.length) {
+            myPostsWrapper.innerHTML =
+              '<p style="color:#6b7280;">No posts created yet.</p>';
+            return;
+          }
+
+          let html = `
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+
+          docs.forEach((doc) => {
+            const data = doc.data();
+            const title = (data.title || "Untitled").substring(0, 60);
+            const created =
+              data.createdAt && data.createdAt.toDate
+                ? data.createdAt.toDate().toLocaleString("en-IN")
+                : "N/A";
+
+            html += `
+              <tr data-id="${doc.id}">
+                <td>${escapeHtml(title)}</td>
+                <td>${escapeHtml(created)}</td>
+                <td>
+                  <button class="small-btn" data-open="${doc.id}">Open</button>
+                  <button class="small-btn danger-btn" data-delete="${doc.id}">Delete</button>
+                </td>
+              </tr>
+            `;
+          });
+
+          html += "</tbody></table>";
+          myPostsWrapper.innerHTML = html;
+
+          myPostsWrapper.querySelectorAll("[data-open]").forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const id = btn.getAttribute("data-open");
+              window.open("news.html?id=" + id, "_blank");
+            });
+          });
+
+          myPostsWrapper.querySelectorAll("[data-delete]").forEach((btn) => {
+            btn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              const id = btn.getAttribute("data-delete");
+              const ok = confirm("Delete this post permanently?");
+              if (!ok) return;
+              try {
+                await db.collection("posts").doc(id).delete();
+                const row = btn.closest("tr");
+                if (row) row.remove();
+              } catch (err) {
+                console.error("Delete error:", err);
+                alert("Error deleting post: " + err.message);
+              }
+            });
+          });
+        }
+
+        async function loadMyPosts(user) {
+          if (!user) {
+            if (myPostsWrapper) {
+              myPostsWrapper.innerHTML =
+                '<p style="color:#6b7280;">Please login to see your posts.</p>';
+            }
+            return;
+          }
+
+          try {
+            const snap = await db
+              .collection("posts")
+              .where("userId", "==", user.uid)
+              .orderBy("createdAt", "desc")
+              .limit(30)
+              .get();
+
+            const docs = [];
+            snap.forEach((doc) => docs.push(doc));
+            renderMyPosts(docs);
+          } catch (e) {
+            console.error("My posts load error:", e);
+            if (myPostsWrapper) {
+              myPostsWrapper.innerHTML =
+                '<p style="color:#b91c1c;">Error loading your posts.</p>';
+            }
+          }
+        }
+
+        firebase.auth().onAuthStateChanged((user) => {
+          if (!statusEl || !infoBox) return;
+
+          if (!user) {
+            statusEl.textContent =
+              "Not logged in. Please use Login / Signup page.";
+            infoBox.style.display = "none";
+            if (logoutBtn) logoutBtn.style.display = "none";
+            loadMyPosts(null);
+            return;
+          }
+
+          statusEl.textContent = "Logged in as " + (user.email || "unknown");
+          infoBox.style.display = "block";
+          if (emailEl) emailEl.textContent = user.email || "";
+          if (uidEl) uidEl.textContent = user.uid || "";
+          if (logoutBtn) logoutBtn.style.display = "block";
+
+          loadMyPosts(user);
+        });
+
+        if (logoutBtn) {
+          logoutBtn.addEventListener("click", () => {
+            firebase
+              .auth()
+              .signOut()
+              .catch((e) => {
+                alert("Logout error: " + e.message);
+              });
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

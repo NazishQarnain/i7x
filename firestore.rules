@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// Suggested security rules for Nearby News.
+// The admin.html panel only HIDES the UI for non-admins — it does not stop
+// someone from calling Firestore directly from the browser console. These
+// rules enforce the same checks on the server so data stays protected even
+// if the client-side checks are bypassed. Deploy with:
+//   firebase deploy --only firestore:rules
+
+function isSignedIn() {
+  return request.auth != null;
+}
+
+function isAdmin() {
+  return isSignedIn() &&
+    exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+}
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      // Users can read their own profile (to check admin status etc).
+      // Only admins can write role/isAdmin fields — never the user themself.
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+
+    match /posts/{postId} {
+      allow read: if true; // public news feed
+
+      // Authors can create their own posts (userId must match their uid).
+      // Admins may additionally create posts on behalf of "system-news"
+      // (used by the admin panel's external news import).
+      allow create: if isSignedIn() &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.content is string &&
+        request.resource.data.content.size() <= 2000 &&
+        (
+          request.resource.data.userId == request.auth.uid ||
+          (isAdmin() && request.resource.data.userId == 'system-news')
+        );
+
+      // Only the post's author or an admin can delete/update it.
+      allow update, delete: if isSignedIn() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+    }
+  }
+}

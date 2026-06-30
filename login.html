@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Nearby News - Login</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <!-- Navbar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">🌓</button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
+    <main class="auth-container">
+      <section class="panel auth-panel">
+        <h2>Login / Signup</h2>
+        <input
+          id="authEmail"
+          type="email"
+          placeholder="Email"
+        />
+        <input
+          id="authPassword"
+          type="password"
+          placeholder="Password"
+        />
+
+        <div class="btn-row">
+          <button id="authSignupBtn">Sign up</button>
+          <button id="authLoginBtn">Login</button>
+          <button
+            id="authLogoutBtn"
+            style="display: none;"
+          >
+            Logout
+          </button>
+        </div>
+
+        <p id="authStatus" class="auth-status">
+          Not logged in.
+        </p>
+      </section>
+    </main>
+
+    <!-- Firebase v8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="firebaseConfig.js"></script>
+
+    <!-- Simple auth logic only for this page -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const $ = (id) => document.getElementById(id);
+
+        const emailEl = $("authEmail");
+        const passEl = $("authPassword");
+        const signupBtn = $("authSignupBtn");
+        const loginBtn = $("authLoginBtn");
+        const logoutBtn = $("authLogoutBtn");
+        const statusEl = $("authStatus");
+
+        function setUI(user) {
+          if (!statusEl || !signupBtn || !loginBtn || !logoutBtn) return;
+          if (user) {
+            statusEl.textContent =
+              "Logged in as " + (user.email || "unknown");
+            signupBtn.style.display = "none";
+            loginBtn.style.display = "none";
+            logoutBtn.style.display = "inline-block";
+          } else {
+            statusEl.textContent = "Not logged in.";
+            signupBtn.style.display = "inline-block";
+            loginBtn.style.display = "inline-block";
+            logoutBtn.style.display = "none";
+          }
+        }
+
+        firebase.auth().onAuthStateChanged(setUI);
+
+        function getVal(el) {
+          return el ? el.value.trim() : "";
+        }
+
+        function doSignup() {
+          const email = getVal(emailEl);
+          const pass = getVal(passEl);
+          if (!email || !pass) {
+            alert("Please fill email & password.");
+            return;
+          }
+          if (signupBtn) signupBtn.disabled = true;
+          firebase
+            .auth()
+            .createUserWithEmailAndPassword(email, pass)
+            .then(() => {
+              window.location.href = "account.html";
+            })
+            .catch((e) => alert("Signup error: " + e.message))
+            .finally(() => {
+              if (signupBtn) signupBtn.disabled = false;
+            });
+        }
+
+        function doLogin() {
+          const email = getVal(emailEl);
+          const pass = getVal(passEl);
+          if (!email || !pass) {
+            alert("Please fill email & password.");
+            return;
+          }
+          if (loginBtn) loginBtn.disabled = true;
+          firebase
+            .auth()
+            .signInWithEmailAndPassword(email, pass)
+            .then(() => {
+              window.location.href = "account.html";
+            })
+            .catch((e) => alert("Login error: " + e.message))
+            .finally(() => {
+              if (loginBtn) loginBtn.disabled = false;
+            });
+        }
+
+        function doLogout() {
+          firebase.auth().signOut().catch((e) => {
+            alert("Logout error: " + e.message);
+          });
+        }
+
+        if (signupBtn) signupBtn.addEventListener("click", doSignup);
+        if (loginBtn) loginBtn.addEventListener("click", doLogin);
+        if (logoutBtn) logoutBtn.addEventListener("click", doLogout);
+      });
+    </script>
+
+    <!-- Navbar JS -->
+    <script src="nav.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Nearby News - Live Map</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+  </head>
+
+  <body>
+    <!-- Navbar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">🌓</button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
+    <div class="map-page-container">
+      <div id="map"></div>
+      <div class="map-legend">
+        Showing latest news posts as pins. Tap a pin to open the post.
+      </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+
+    <!-- Firebase + config -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebaseConfig.js"></script>
+
+    <!-- Navbar JS -->
+    <script src="nav.js" defer></script>
+
+    <script>
+      const db = firebase.firestore();
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      // Initialize map (default center = India approx)
+      const map = L.map("map").setView([23.5, 80], 5);
+
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(map);
+
+      // Try to center on user's current location if allowed
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            map.setView([lat, lng], 13);
+          },
+          () => {
+            // ignore error, keep default
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+
+      function addMarkerForPost(doc) {
+        const data = doc.data();
+        if (
+          !data.location ||
+          typeof data.location.latitude !== "number" ||
+          typeof data.location.longitude !== "number"
+        ) {
+          return;
+        }
+
+        const lat = data.location.latitude;
+        const lng = data.location.longitude;
+        const title = data.title || "Untitled News";
+        const content = data.content || "";
+        const full = content;
+        const snippet =
+          full.length > 80 ? full.slice(0, 80).trimEnd() + "..." : full;
+        const address = data.address || "";
+
+        const popupHtml = `
+          <div>
+            <p class="map-popup-title">${escapeHtml(title)}</p>
+            <p class="map-popup-snippet">${escapeHtml(snippet)}</p>
+            ${
+              address
+                ? `<p style="margin:0 0 4px;font-size:11px;color:#4b5563;">${escapeHtml(
+                    address
+                  )}</p>`
+                : ""
+            }
+            <a class="map-popup-link" href="news.html?id=${encodeURIComponent(
+              doc.id
+            )}">
+              Open full post
+            </a>
+          </div>
+        `;
+
+        L.marker([lat, lng])
+          .addTo(map)
+          .bindPopup(popupHtml);
+      }
+
+      async function loadMapPosts() {
+        try {
+          const snap = await db
+            .collection("posts")
+            .orderBy("createdAt", "desc")
+            .limit(100)
+            .get();
+
+          if (snap.empty) {
+            return;
+          }
+
+          snap.forEach(addMarkerForPost);
+        } catch (e) {
+          console.error("Error loading posts for map:", e);
+        }
+      }
+
+      loadMapPosts();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Nearby News - Home</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Navbar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">
+        🌓
+      </button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
+    <main class="home-container">
+      <h2>Latest Nearby News</h2>
+      <div id="newsList" class="news-list"></div>
+    </main>
+
+    <!-- Firebase v8 (same as app.html) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebaseConfig.js"></script>
+    <script src="nav.js"></script>
+
+    <script>
+      const db = firebase.firestore();
+
+      // User location cache for distance
+      let userLocation = null;
+
+      // Country approx centers (same mapping as admin/index)
+      const COUNTRY_COORDS = {
+        india: { latitude: 20.5937, longitude: 78.9629 },
+        canada: { latitude: 56.1304, longitude: -106.3468 },
+        "united states of america": { latitude: 39.8283, longitude: -98.5795 },
+        usa: { latitude: 39.8283, longitude: -98.5795 },
+        japan: { latitude: 36.2048, longitude: 138.2529 },
+        china: { latitude: 35.8617, longitude: 104.1954 },
+        "united kingdom": { latitude: 55.3781, longitude: -3.436 },
+        uk: { latitude: 55.3781, longitude: -3.436 },
+        australia: { latitude: -25.2744, longitude: 133.7751 },
+        nigeria: { latitude: 9.082, longitude: 8.6753 },
+        ghana: { latitude: 7.9465, longitude: -1.0232 },
+        "south africa": { latitude: -30.5595, longitude: 22.9375 },
+        russia: { latitude: 61.524, longitude: 105.3188 },
+        jamaica: { latitude: 18.1096, longitude: -77.2975 },
+        "dominican republic": { latitude: 18.7357, longitude: -70.1627 },
+        kenya: { latitude: -0.0236, longitude: 37.9062 }
+      };
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function haversineDistance(lat1, lon1, lat2, lon2) {
+        const toRad = (x) => (x * Math.PI) / 180;
+        const R = 6371; // km
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(lat1)) *
+            Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      // lat/lng → exact, warna country/address se approx
+      function formatDistanceOnly(data) {
+        if (!userLocation) return "";
+
+        let lat = null;
+        let lng = null;
+
+        // 1) Nearby user posts with proper coordinates
+        if (
+          data.location &&
+          typeof data.location.latitude === "number" &&
+          typeof data.location.longitude === "number" &&
+          !(data.location.latitude === 0 && data.location.longitude === 0)
+        ) {
+          lat = data.location.latitude;
+          lng = data.location.longitude;
+        } else {
+          // 2) External posts: use country/address/location string
+          const rawLocation =
+            (data.country || data.address || data.location || "") + "";
+          const key = rawLocation.toLowerCase().trim();
+          const coords = COUNTRY_COORDS[key];
+          if (coords) {
+            lat = coords.latitude;
+            lng = coords.longitude;
+          }
+        }
+
+        if (lat == null || lng == null) return "";
+
+        const dKm = haversineDistance(
+          userLocation.lat,
+          userLocation.lng,
+          lat,
+          lng
+        );
+
+        const km = Math.round(dKm * 10) / 10;
+        const m = Math.round(dKm * 1000);
+
+        return `${km} km (${m} m)`;
+      }
+
+      // Time + distance + address/source line
+      function formatMetaLine(data) {
+        let timeText = "";
+        let ts = null;
+
+        // External posts ka original time (Firestore Timestamp ya Date)
+        if (data.publishedAt && data.publishedAt.toDate) {
+          ts = data.publishedAt.toDate();
+        } else if (data.publishedAt instanceof Date) {
+          ts = data.publishedAt;
+        } else if (data.createdAt && data.createdAt.toDate) {
+          ts = data.createdAt.toDate();
+        } else if (data.createdAt instanceof Date) {
+          ts = data.createdAt;
+        }
+
+        if (ts) {
+          timeText = ts.toLocaleString("en-IN");
+        }
+
+        const distanceText = formatDistanceOnly(data);
+        const addressText =
+          data.address || data.sourceName || data.country || "";
+
+        const parts = [];
+        if (timeText) parts.push(timeText);
+        if (distanceText) parts.push(distanceText);
+        if (addressText) parts.push(addressText);
+
+        if (parts.length === 0) return "";
+        return parts.join(" • ");
+      }
+
+      function renderNewsCard(id, data) {
+        const card = document.createElement("div");
+        card.className = "news-card";
+        card.addEventListener("click", () => {
+          window.location.href = `news.html?id=${id}`;
+        });
+
+        const title = data.title || "Untitled News";
+        const fullBody = data.content || "";
+        const body =
+          fullBody.length > 80
+            ? fullBody.slice(0, 80).trimEnd() + "..."
+            : fullBody;
+        const metaLine = formatMetaLine(data);
+
+        card.innerHTML = `
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(body)}</p>
+          <p class="news-meta-small">
+            ${escapeHtml(metaLine)}
+          </p>
+          ${
+            data.imageUrl
+              ? `<img src="${escapeHtml(data.imageUrl)}" alt="${escapeHtml(
+                  title
+                )}" class="news-image" loading="lazy" />`
+              : ""
+          }
+          <span class="read-more">Read more</span>
+        `;
+        card.setAttribute("role", "button");
+        card.setAttribute("tabindex", "0");
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            window.location.href = `news.html?id=${id}`;
+          }
+        });
+        return card;
+      }
+
+      async function loadNews() {
+        const listEl = document.getElementById("newsList");
+        listEl.textContent = "Loading...";
+        try {
+          const snap = await db
+            .collection("posts")
+            .orderBy("createdAt", "desc")
+            .limit(20)
+            .get();
+
+          listEl.textContent = "";
+
+          if (snap.empty) {
+            listEl.textContent = "No news found.";
+            return;
+          }
+
+          const docs = snap.docs;
+
+          // Sort by distance if userLocation present
+          let sortedDocs = docs;
+          if (userLocation) {
+            sortedDocs = docs
+              .map((doc) => {
+                const data = doc.data();
+                let lat = null;
+                let lng = null;
+
+                if (
+                  data.location &&
+                  typeof data.location.latitude === "number" &&
+                  typeof data.location.longitude === "number" &&
+                  !(data.location.latitude === 0 &&
+                    data.location.longitude === 0)
+                ) {
+                  lat = data.location.latitude;
+                  lng = data.location.longitude;
+                } else {
+                  const rawLocation =
+                    (data.country ||
+                      data.address ||
+                      data.location ||
+                      "") + "";
+                  const key = rawLocation.toLowerCase().trim();
+                  const coords = COUNTRY_COORDS[key];
+                  if (coords) {
+                    lat = coords.latitude;
+                    lng = coords.longitude;
+                  }
+                }
+
+                let dKm = Number.POSITIVE_INFINITY;
+                if (lat != null && lng != null) {
+                  dKm = haversineDistance(
+                    userLocation.lat,
+                    userLocation.lng,
+                    lat,
+                    lng
+                  );
+                }
+                return { doc, dKm };
+              })
+              .sort((a, b) => a.dKm - b.dKm)
+              .map((x) => x.doc);
+          }
+
+          const frag = document.createDocumentFragment();
+          sortedDocs.forEach((doc) => {
+            frag.appendChild(renderNewsCard(doc.id, doc.data()));
+          });
+          listEl.appendChild(frag);
+        } catch (e) {
+          console.error("Home load error:", e);
+          listEl.textContent = "Error loading news.";
+        }
+      }
+
+      function initHome() {
+        if (!navigator.geolocation) {
+          loadNews();
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            userLocation = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude
+            };
+            loadNews();
+          },
+          (err) => {
+            console.warn("Geolocation error:", err);
+            loadNews();
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+
+      document.addEventListener("DOMContentLoaded", initHome);
+    </script>
+  </body>
+</html>

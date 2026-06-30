@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Nearby News - Details</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Navbar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">🌓</button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
+    <main class="news-detail-container">
+      <button id="backBtn" class="back-btn">← Back</button>
+
+      <h2 id="newsTitle">Loading...</h2>
+      <p id="newsMeta" class="news-meta"></p>
+      <img
+        id="newsImage"
+        class="news-detail-image"
+        style="display: none;"
+        alt="News image"
+      />
+      <p id="newsBody" class="news-body"></p>
+
+      <div class="news-detail-actions" id="newsActions"></div>
+    </main>
+
+    <!-- Firebase v8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebaseConfig.js"></script>
+
+    <!-- Navbar JS -->
+    <script src="nav.js" defer></script>
+
+    <script>
+      const db = firebase.firestore();
+
+      function getQueryParam(name) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name);
+      }
+
+      function formatMeta(data) {
+        const parts = [];
+
+        if (data.createdAt && data.createdAt.toDate) {
+          parts.push(data.createdAt.toDate().toLocaleString("en-IN"));
+        }
+
+        if (data.address) {
+          parts.push(data.address);
+        }
+
+        if (parts.length === 0) return "";
+        return parts.join(" • ");
+      }
+
+      async function loadNewsDetail() {
+        const id = getQueryParam("id");
+        const titleEl = document.getElementById("newsTitle");
+        const metaEl = document.getElementById("newsMeta");
+        const bodyEl = document.getElementById("newsBody");
+        const imgEl = document.getElementById("newsImage");
+        const actionsEl = document.getElementById("newsActions");
+
+        if (!id) {
+          if (titleEl) titleEl.textContent = "No news id provided.";
+          return;
+        }
+
+        try {
+          const doc = await db.collection("posts").doc(id).get();
+          if (!doc.exists) {
+            if (titleEl) titleEl.textContent = "News not found.";
+            return;
+          }
+
+          const data = doc.data();
+          const title = data.title || "Untitled News";
+          const content = data.content || "";
+          const meta = formatMeta(data);
+
+          if (titleEl) titleEl.textContent = title;
+          if (metaEl) metaEl.textContent = meta;
+          if (bodyEl) bodyEl.textContent = content;
+
+          if (data.imageUrl && imgEl) {
+            imgEl.src = data.imageUrl;
+            imgEl.style.display = "block";
+          }
+
+          if (
+            actionsEl &&
+            data.location &&
+            typeof data.location.latitude === "number" &&
+            typeof data.location.longitude === "number"
+          ) {
+            const lat = data.location.latitude;
+            const lng = data.location.longitude;
+            const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
+            const mapsLink = document.createElement("a");
+            mapsLink.href = mapsUrl;
+            mapsLink.target = "_blank";
+            mapsLink.rel = "noopener noreferrer";
+            mapsLink.textContent = "Open in Google Maps";
+
+            actionsEl.appendChild(mapsLink);
+          }
+        } catch (e) {
+          console.error("Error loading news detail:", e);
+          if (titleEl) titleEl.textContent = "Error loading news.";
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const backBtn = document.getElementById("backBtn");
+        if (backBtn) {
+          backBtn.addEventListener("click", () => {
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              window.location.href = "index.html";
+            }
+          });
+        }
+
+        loadNewsDetail();
+      });
+    </script>
+  </body>
+</html>
