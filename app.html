@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- App version: 1.6.1 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -7,6 +8,8 @@
       content="width=device-width, initial-scale=1"
     />
     <title>Nearby News &amp; Alert System - App</title>
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="stylesheet" href="style.css" />
   </head>
 
@@ -26,6 +29,7 @@
         <a href="app.html">Create / Nearby News</a>
         <a href="map.html">Live Map</a>
         <a href="admin.html">Admin</a>
+        <div class="side-menu-version">v<span id="appVersion"></span></div>
       </nav>
       <div id="backdrop" class="backdrop"></div>
     </header>
@@ -66,15 +70,25 @@
         <!-- Create News -->
         <section class="panel app-section">
           <h2>Create News</h2>
+          <select id="postTypeInput">
+            <option value="">📰 General News</option>
+            <option value="road_damage">🚧 Road Damage</option>
+            <option value="bridge_damage">🌉 Bridge Damage / Closed</option>
+            <option value="accident">🚗 Accident</option>
+            <option value="flooding">🌊 Flooding / Waterlogging</option>
+            <option value="other_hazard">⚠️ Other Road Hazard</option>
+          </select>
           <input
             id="titleInput"
             type="text"
             placeholder="Title"
+            maxlength="150"
           />
           <textarea
             id="contentInput"
             placeholder="Details"
             rows="3"
+            maxlength="3000"
           ></textarea>
           <input
             id="imageInput"

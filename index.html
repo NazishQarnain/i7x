@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- App version: 1.8.1 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,6 +8,8 @@
       content="width=device-width, initial-scale=1"
     />
     <title>Nearby News - Home</title>
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -27,19 +30,34 @@
         <a href="app.html">Create / Nearby News</a>
         <a href="map.html">Live Map</a>
         <a href="admin.html">Admin</a>
+        <div class="side-menu-version">v<span id="appVersion"></span></div>
       </nav>
       <div id="backdrop" class="backdrop"></div>
     </header>
 
     <main class="home-container">
-      <h2>Latest Nearby News</h2>
-      <div id="newsList" class="news-list"></div>
+      <div class="home-tabs" role="tablist">
+        <button id="tabNearby" class="home-tab active" role="tab">📍 Nearby</button>
+        <button id="tabExplore" class="home-tab" role="tab">🧭 Explore</button>
+      </div>
+      <div id="nearbyPane">
+        <h2>Latest Nearby News</h2>
+        <div id="newsList" class="news-list"></div>
+      </div>
+      <div id="explorePane" style="display:none">
+        <h3 class="explore-heading">⚠️ Abhi zaroori</h3>
+        <div id="urgentList" class="news-list"></div>
+        <h3 class="explore-heading">✨ Tumhare liye</h3>
+        <div id="forYouList" class="news-list"></div>
+      </div>
     </main>
 
     <!-- Firebase v8 (same as app.html) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="firebaseConfig.js"></script>
+    <script src="explore.js"></script>
     <script src="nav.js"></script>
 
     <script>
@@ -47,6 +65,16 @@
 
       // User location cache for distance
       let userLocation = null;
+
+      // Shared road-hazard metadata (mirrored in app.js / map.html / news.html
+      // since this is a plain static site without a shared JS module system).
+      const HAZARD_TYPES = {
+        road_damage: { label: "Road Damage", emoji: "🚧", color: "#f97316" },
+        bridge_damage: { label: "Bridge Damage/Closed", emoji: "🌉", color: "#dc2626" },
+        accident: { label: "Accident", emoji: "🚗", color: "#b91c1c" },
+        flooding: { label: "Flooding", emoji: "🌊", color: "#0284c7" },
+        other_hazard: { label: "Road Hazard", emoji: "⚠️", color: "#ca8a04" }
+      };
 
       // Country approx centers (same mapping as admin/index)
       const COUNTRY_COORDS = {
@@ -67,15 +95,6 @@
         "dominican republic": { latitude: 18.7357, longitude: -70.1627 },
         kenya: { latitude: -0.0236, longitude: 37.9062 }
       };
-
-      function escapeHtml(str) {
-        return String(str)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
 
       function haversineDistance(lat1, lon1, lat2, lon2) {
         const toRad = (x) => (x * Math.PI) / 180;
@@ -172,7 +191,9 @@
         const card = document.createElement("div");
         card.className = "news-card";
         card.addEventListener("click", () => {
-          window.location.href = `news.html?id=${id}`;
+          // Consistency fix: URL-encode the id like map.html already
+          // does, instead of interpolating it raw into the URL.
+          window.location.href = `news.html?id=${encodeURIComponent(id)}`;
         });
 
         const title = data.title || "Untitled News";
@@ -183,29 +204,50 @@
             : fullBody;
         const metaLine = formatMetaLine(data);
 
-        card.innerHTML = `
-          <h3>${escapeHtml(title)}</h3>
-          <p>${escapeHtml(body)}</p>
-          <p class="news-meta-small">
-            ${escapeHtml(metaLine)}
-          </p>
-          ${
-            data.imageUrl
-              ? `<img src="${escapeHtml(data.imageUrl)}" alt="${escapeHtml(
-                  title
-                )}" class="news-image" loading="lazy" />`
-              : ""
-          }
-          <span class="read-more">Read more</span>
-        `;
-        card.setAttribute("role", "button");
-        card.setAttribute("tabindex", "0");
-        card.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            window.location.href = `news.html?id=${id}`;
-          }
-        });
+        // Build with DOM APIs (not innerHTML) so post content can never
+        // execute as HTML/script — prevents stored XSS from user posts.
+
+        // Enhancement: road-hazard posts get a colored badge at the top
+        // of the card so they're immediately distinguishable from
+        // regular news while scanning the feed.
+        const hazardMeta = data.hazardType ? HAZARD_TYPES[data.hazardType] : null;
+        if (hazardMeta) {
+          const badge = document.createElement("span");
+          badge.className = "hazard-badge";
+          badge.style.background = hazardMeta.color;
+          badge.style.alignSelf = "flex-start";
+          badge.textContent = `${hazardMeta.emoji} ${hazardMeta.label}`;
+          card.appendChild(badge);
+        }
+
+        const h3 = document.createElement("h3");
+        h3.textContent = title;
+        card.appendChild(h3);
+
+        const p = document.createElement("p");
+        p.textContent = body;
+        card.appendChild(p);
+
+        const meta = document.createElement("p");
+        meta.className = "news-meta-small";
+        meta.textContent = metaLine;
+        card.appendChild(meta);
+
+        if (data.imageUrl) {
+          const img = document.createElement("img");
+          img.src = data.imageUrl;
+          img.alt = title;
+          img.className = "news-image";
+          img.loading = "lazy";
+          img.onerror = () => img.remove(); // broken image link -> just hide it
+          card.appendChild(img);
+        }
+
+        const readMore = document.createElement("span");
+        readMore.className = "read-more";
+        readMore.textContent = "Read more";
+        card.appendChild(readMore);
+
         return card;
       }
 
@@ -298,14 +340,57 @@
               lng: pos.coords.longitude
             };
             loadNews();
+            // Fix: opening Explore before the GPS fix arrived left it
+            // without urgency; refresh it once location is known.
+            if (exploreLoaded) loadExplore();
           },
           (err) => {
             console.warn("Geolocation error:", err);
             loadNews();
           },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
         );
       }
+
+      // ---------- Explore tab ----------
+      let exploreLoaded = false;
+      function fillExplore(listEl, docs, emptyMsg) {
+        listEl.textContent = "";
+        if (!docs.length) { listEl.textContent = emptyMsg; return; }
+        const frag = document.createDocumentFragment();
+        docs.forEach((doc) => {
+          const data = doc.data();
+          const card = renderNewsCard(doc.id, data);
+          card.addEventListener("click", () => Explore.markSeen(doc.id));
+          Explore.mountActions(card, db, doc.id, data, () => card.remove());
+          frag.appendChild(card);
+        });
+        listEl.appendChild(frag);
+      }
+      async function loadExplore() {
+        const uEl = document.getElementById("urgentList"), fEl = document.getElementById("forYouList");
+        uEl.textContent = "Loading..."; fEl.textContent = "Loading...";
+        try {
+          const docs = await Explore.fetchCandidates(db);
+          const { urgent, forYou } = Explore.rank(docs, userLocation);
+          fillExplore(uEl, urgent, userLocation ? "Abhi aapke paas koi urgent hazard nahi. 👍" : "Urgent hazards dekhne ke liye location allow karein.");
+          fillExplore(fEl, forYou, "Abhi dikhane ke liye kuch nahi.");
+          exploreLoaded = true;
+        } catch (e) {
+          console.error("Explore load error:", e);
+          uEl.textContent = "Error loading Explore."; fEl.textContent = "";
+        }
+      }
+      function showTab(which) {
+        const ex = which === "explore";
+        document.getElementById("nearbyPane").style.display = ex ? "none" : "";
+        document.getElementById("explorePane").style.display = ex ? "" : "none";
+        document.getElementById("tabNearby").classList.toggle("active", !ex);
+        document.getElementById("tabExplore").classList.toggle("active", ex);
+        if (ex && !exploreLoaded) loadExplore();
+      }
+      document.getElementById("tabNearby").addEventListener("click", () => showTab("nearby"));
+      document.getElementById("tabExplore").addEventListener("click", () => showTab("explore"));
 
       document.addEventListener("DOMContentLoaded", initHome);
     </script>

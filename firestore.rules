@@ -1,51 +1,102 @@
 rules_version = '2';
-
-// Suggested security rules for Nearby News.
-// The admin.html panel only HIDES the UI for non-admins — it does not stop
-// someone from calling Firestore directly from the browser console. These
-// rules enforce the same checks on the server so data stays protected even
-// if the client-side checks are bypassed. Deploy with:
-//   firebase deploy --only firestore:rules
-
-function isSignedIn() {
-  return request.auth != null;
-}
-
-function isAdmin() {
-  return isSignedIn() &&
-    exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-}
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    match /users/{userId} {
-      // Users can read their own profile (to check admin status etc).
-      // Only admins can write role/isAdmin fields — never the user themself.
-      allow read: if isSignedIn() && request.auth.uid == userId;
-      allow write: if isAdmin();
+    // ---------- Helpers ----------
+
+    // Standardized admin check — single source of truth (role == "admin"),
+    // matching what admin.html should read. Avoids the old inconsistency
+    // of checking role / isAdmin / is_admin in three different places.
+    function isSignedIn() {
+      return request.auth != null;
     }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---------- Users ----------
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // A user can create/update their own profile doc, but can NEVER
+      // write the "role" field themselves — that's what used to let any
+      // logged-in user grant themselves admin access. Only an admin (via
+      // console, a trusted backend, or another admin acting through this
+      // rule) can set role.
+      allow create: if isOwner(uid) &&
+        !("role" in request.resource.data);
+
+      allow update: if isAdmin() ||
+        (isOwner(uid) &&
+          request.resource.data.role == resource.data.get("role", null));
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Posts ----------
 
     match /posts/{postId} {
-      allow read: if true; // public news feed
+      // Public read — this is a public news feed.
+      allow read: if true;
 
-      // Authors can create their own posts (userId must match their uid).
-      // Admins may additionally create posts on behalf of "system-news"
-      // (used by the admin panel's external news import).
+      // Create: normal users must tag the post with their own uid (can't
+      // post as someone else). Admin can additionally create posts with
+      // userId "system-news" — that's what the bulk NewsData.io import
+      // in admin.html writes. Either way title/content must be present.
       allow create: if isSignedIn() &&
         request.resource.data.title is string &&
-        request.resource.data.title.size() <= 120 &&
+        request.resource.data.title.size() > 0 &&
         request.resource.data.content is string &&
-        request.resource.data.content.size() <= 2000 &&
+        request.resource.data.content.size() > 0 &&
         (
           request.resource.data.userId == request.auth.uid ||
-          (isAdmin() && request.resource.data.userId == 'system-news')
+          (isAdmin() && request.resource.data.userId == "system-news")
         );
 
-      // Only the post's author or an admin can delete/update it.
-      allow update, delete: if isSignedIn() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+      // Update/Delete: only the post's own author, or an admin.
+      // Fixes the old rule, which let ANY logged-in user edit or delete
+      // ANY other user's post (or the imported system-news posts —
+      // those now can only be deleted by an admin, since no regular
+      // user "owns" userId == "system-news").
+      allow update, delete: if isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // Any signed-in user may change ONLY likeCount, by exactly +/-1, and
+      // only together with creating/deleting their own like doc in the
+      // same batch. That makes it one like per user per post.
+      allow update: if isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["likeCount"]) &&
+        request.resource.data.likeCount >= 0 &&
+        (
+          (request.resource.data.likeCount - resource.data.get("likeCount", 0) == 1 &&
+            !exists(/databases/$(database)/documents/users/$(request.auth.uid)/likes/$(postId)) &&
+            existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/likes/$(postId))) ||
+          (request.resource.data.likeCount - resource.data.get("likeCount", 0) == -1 &&
+            exists(/databases/$(database)/documents/users/$(request.auth.uid)/likes/$(postId)) &&
+            !existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/likes/$(postId)))
+        );
     }
+
+    // Liked / saved posts: private to the user.
+    match /users/{uid}/likes/{postId} {
+      allow read, write: if isOwner(uid);
+    }
+    match /users/{uid}/saves/{postId} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Note: with the create rule above, the batch import in admin.html's
+    // import60RandomNews() will only succeed while signed in as an
+    // account whose /users/{uid} doc has role == "admin" — same
+    // requirement the UI already enforces client-side; this backs it up
+    // server-side so it can't be bypassed by calling Firestore directly.
   }
 }

@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- App version: 1.6.1 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -7,6 +8,8 @@
       content="width=device-width, initial-scale=1"
     />
     <title>Nearby News - Live Map</title>
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="stylesheet" href="style.css" />
 
     <!-- Leaflet CSS -->
@@ -15,6 +18,15 @@
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
+    />
+    <!-- Marker clustering: keeps the map fast/readable once 60-100+ pins load -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
     />
   </head>
 
@@ -34,14 +46,34 @@
         <a href="app.html">Create / Nearby News</a>
         <a href="map.html">Live Map</a>
         <a href="admin.html">Admin</a>
+        <div class="side-menu-version">v<span id="appVersion"></span></div>
       </nav>
       <div id="backdrop" class="backdrop"></div>
     </header>
 
     <div class="map-page-container">
       <div id="map"></div>
+      <div id="mapLoading" class="map-legend" style="top: 12px; bottom: auto; left: auto; right: 12px;">
+        Loading news pins...
+      </div>
       <div class="map-legend">
         Showing latest news posts as pins. Tap a pin to open the post.
+      </div>
+
+      <button id="driveModeBtn" class="drive-mode-btn">🚗 Start Drive Mode</button>
+      <button id="recenterBtn" class="drive-mode-btn recenter-btn" style="display: none;">
+        🎯 Recenter
+      </button>
+
+      <div id="driveHazardPanel" class="drive-hazard-panel" style="display: none;">
+        <div class="drive-hazard-header">
+          <strong>⚠️ Hazards ahead</strong>
+          <button id="stopDriveModeBtn" class="small-btn">Stop</button>
+        </div>
+        <p id="driveHazardSub" class="drive-hazard-sub">
+          Waiting for GPS signal...
+        </p>
+        <div id="driveHazardList"></div>
       </div>
     </div>
 
@@ -51,6 +83,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
     <!-- Firebase + config -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -63,15 +96,6 @@
     <script>
       const db = firebase.firestore();
 
-      function escapeHtml(str) {
-        return String(str)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
-
       // Initialize map (default center = India approx)
       const map = L.map("map").setView([23.5, 80], 5);
 
@@ -80,6 +104,14 @@
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }).addTo(map);
+
+      // Cluster group: groups nearby pins together so the map stays fast
+      // and readable even with 100 posts loaded at once.
+      // Optimization: chunkedLoading spreads marker insertion across
+      // animation frames instead of doing it all synchronously, so
+      // adding 100+ markers doesn't freeze the map for a moment.
+      const markerCluster = L.markerClusterGroup({ chunkedLoading: true });
+      map.addLayer(markerCluster);
 
       // Try to center on user's current location if allowed
       if (navigator.geolocation) {
@@ -96,6 +128,46 @@
         );
       }
 
+      // Escapes text before it goes into innerHTML, so post titles/content
+      // (which are user-submitted) can never inject HTML/script into the map popup.
+      function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str == null ? "" : String(str);
+        return div.innerHTML;
+      }
+
+      // Shared road-hazard metadata (mirrored in app.js / index.html /
+      // news.html since this is a plain static site with no shared JS
+      // module system).
+      const HAZARD_TYPES = {
+        road_damage: { label: "Road Damage", emoji: "🚧", color: "#f97316" },
+        bridge_damage: { label: "Bridge Damage/Closed", emoji: "🌉", color: "#dc2626" },
+        accident: { label: "Accident", emoji: "🚗", color: "#b91c1c" },
+        flooding: { label: "Flooding", emoji: "🌊", color: "#0284c7" },
+        other_hazard: { label: "Road Hazard", emoji: "⚠️", color: "#ca8a04" }
+      };
+
+      // Custom colored pin for hazard posts so they stand out from
+      // regular news pins on the map at a glance. Regular news keeps
+      // Leaflet's default blue marker (returns null so the caller falls
+      // back to it).
+      function hazardIcon(hazardType) {
+        const meta = HAZARD_TYPES[hazardType];
+        if (!meta) return null;
+        return L.divIcon({
+          className: "hazard-marker",
+          html: `<div class="hazard-marker-inner" style="background:${meta.color}">${meta.emoji}</div>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+          popupAnchor: [0, -14]
+        });
+      }
+
+      // In-memory list of currently-loaded posts with valid coordinates,
+      // used by Drive Mode to compute distance/bearing without a second
+      // Firestore read. Rebuilt every time loadMapPosts() runs.
+      let allPosts = [];
+
       function addMarkerForPost(doc) {
         const data = doc.data();
         if (
@@ -108,15 +180,32 @@
 
         const lat = data.location.latitude;
         const lng = data.location.longitude;
+
+        // Bug fix: imported external news without real coordinates were
+        // stored as (0,0) — that used to dump a pile of pins in the middle
+        // of the ocean (Gulf of Guinea). Skip those instead of plotting them.
+        if (lat === 0 && lng === 0) return;
+
         const title = data.title || "Untitled News";
         const content = data.content || "";
         const full = content;
         const snippet =
           full.length > 80 ? full.slice(0, 80).trimEnd() + "..." : full;
         const address = data.address || "";
+        const hazardType = data.hazardType || null;
+        const hazardMeta = hazardType ? HAZARD_TYPES[hazardType] : null;
+
+        allPosts.push({ id: doc.id, lat, lng, hazardType, title });
 
         const popupHtml = `
           <div>
+            ${
+              hazardMeta
+                ? `<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:${hazardMeta.color};">${hazardMeta.emoji} ${escapeHtml(
+                    hazardMeta.label
+                  )}</p>`
+                : ""
+            }
             <p class="map-popup-title">${escapeHtml(title)}</p>
             <p class="map-popup-snippet">${escapeHtml(snippet)}</p>
             ${
@@ -134,12 +223,15 @@
           </div>
         `;
 
-        L.marker([lat, lng])
-          .addTo(map)
-          .bindPopup(popupHtml);
+        const icon = hazardIcon(hazardType);
+        const marker = icon
+          ? L.marker([lat, lng], { icon })
+          : L.marker([lat, lng]);
+        marker.bindPopup(popupHtml).addTo(markerCluster);
       }
 
       async function loadMapPosts() {
+        const loadingEl = document.getElementById("mapLoading");
         try {
           const snap = await db
             .collection("posts")
@@ -147,17 +239,439 @@
             .limit(100)
             .get();
 
+          // Clear existing pins/state before repopulating — defensive
+          // guard in case this ever runs more than once (e.g. a future
+          // manual refresh button). Drive Mode's own periodic refresh no
+          // longer calls this function — see refreshDriveHazards() below.
+          markerCluster.clearLayers();
+          allPosts = [];
+
           if (snap.empty) {
+            if (loadingEl) loadingEl.textContent = "No news posts yet.";
             return;
           }
 
           snap.forEach(addMarkerForPost);
+          if (loadingEl) loadingEl.remove();
         } catch (e) {
           console.error("Error loading posts for map:", e);
+          if (loadingEl) loadingEl.textContent = "Error loading news pins.";
         }
       }
 
       loadMapPosts();
+
+      // ---------------- DRIVE MODE ----------------
+      // Uses continuous GPS tracking (watchPosition) to work out which
+      // direction the user is travelling, then surfaces any road-hazard
+      // posts that lie roughly ahead of them — with a live updating
+      // distance — plus a one-time alert (vibration + toast) as each
+      // hazard is approached.
+
+      const driveModeBtn = document.getElementById("driveModeBtn");
+      const recenterBtn = document.getElementById("recenterBtn");
+      const stopDriveModeBtn = document.getElementById("stopDriveModeBtn");
+      const driveHazardPanel = document.getElementById("driveHazardPanel");
+      const driveHazardSub = document.getElementById("driveHazardSub");
+      const driveHazardList = document.getElementById("driveHazardList");
+
+      let driveWatchId = null;
+      let driveRefreshInterval = null;
+      let lastDrivePos = null; // { lat, lng } from the previous GPS fix
+      let lastDriveHeading = null;
+      let wakeLock = null; // keeps the screen on during Drive Mode
+      let alertedHazards = {}; // hazardId -> Set of km-thresholds already alerted
+      let driveMapFollowing = true; // whether the map auto-centers on each GPS fix
+
+      // Bug fix: Leaflet's "zoomstart" event fires for BOTH user zoom
+      // gestures AND our own programmatic map.setView() calls (e.g. the
+      // auto-follow recenter below). Without this guard, every
+      // auto-follow update immediately looked like "the user panned
+      // away", instantly disabling follow mode and showing the Recenter
+      // button right as Drive Mode started. This flag lets the
+      // drag/zoom listener tell our own moves apart from the user's.
+      let suppressFollowCancel = false;
+      function driveSetView(lat, lng, zoom) {
+        suppressFollowCancel = true;
+        map.setView([lat, lng], zoom);
+        setTimeout(() => {
+          suppressFollowCancel = false;
+        }, 0);
+      }
+
+      // Optimization: Drive Mode used to re-run loadMapPosts() (all 100
+      // latest posts, including plain news) every 60s and clear+rebuild
+      // every pin on the map — wasteful Firestore reads and a visible
+      // flicker across the whole map while you're trying to drive. This
+      // separate list holds only hazard posts, refreshed independently
+      // and without touching the visible marker layer.
+      let driveHazardPosts = [];
+
+      const ALERT_THRESHOLDS_KM = [1, 0.3]; // warn at 1km, then again at 300m
+      const MAX_HAZARD_RANGE_KM = 15; // ignore hazards farther than this
+      const AHEAD_CONE_DEGREES = 70; // "roughly ahead" = within +/-70° of heading
+
+      function toRad(deg) {
+        return (deg * Math.PI) / 180;
+      }
+      function toDeg(rad) {
+        return (rad * 180) / Math.PI;
+      }
+
+      // Bearing (compass degrees, 0=north) from point 1 to point 2.
+      function bearingTo(lat1, lon1, lat2, lon2) {
+        const y =
+          Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+        const x =
+          Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+          Math.sin(toRad(lat1)) *
+            Math.cos(toRad(lat2)) *
+            Math.cos(toRad(lon2 - lon1));
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+      }
+
+      // Smallest angle between two compass bearings (0-180).
+      function angleDiff(a, b) {
+        const d = Math.abs(a - b) % 360;
+        return d > 180 ? 360 - d : d;
+      }
+
+      function haversineKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(lat1)) *
+            Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      function formatDistShort(km) {
+        return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+      }
+
+      // Optimization: instead of loadMapPosts()'s full "all 100 latest
+      // posts" query (which also clears/redraws every pin on the map),
+      // this queries ONLY hazard-tagged posts. A single inequality filter
+      // like this doesn't require manually creating a composite index in
+      // Firestore. Used for Drive Mode's periodic refresh so a long
+      // drive still picks up newly-reported hazards, without the reads
+      // or the visual flicker of reloading the whole map.
+      async function refreshDriveHazards() {
+        try {
+          const snap = await db
+            .collection("posts")
+            .where("hazardType", "!=", null)
+            .limit(200)
+            .get();
+
+          const posts = [];
+          snap.forEach((doc) => {
+            const data = doc.data();
+            if (
+              !data.location ||
+              typeof data.location.latitude !== "number" ||
+              typeof data.location.longitude !== "number"
+            ) {
+              return;
+            }
+            const lat = data.location.latitude;
+            const lng = data.location.longitude;
+            if (lat === 0 && lng === 0) return;
+            posts.push({
+              id: doc.id,
+              lat,
+              lng,
+              hazardType: data.hazardType,
+              title: data.title || "Untitled News"
+            });
+          });
+          driveHazardPosts = posts;
+        } catch (e) {
+          console.error("Error refreshing drive hazards:", e);
+          // Keep whatever we already had rather than wiping the panel
+          // on a transient network hiccup mid-drive.
+        }
+      }
+
+      function showHazardAlert(hazard, meta) {
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        const toast = document.createElement("div");
+        toast.className = "hazard-toast";
+        toast.textContent = `${meta.emoji} ${meta.label} ~${formatDistShort(
+          hazard.dKm
+        )} ahead`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 6000);
+      }
+
+      function checkProximityAlerts(hazardsAhead) {
+        hazardsAhead.forEach((h) => {
+          const meta = HAZARD_TYPES[h.hazardType];
+          if (!meta) return;
+          if (!alertedHazards[h.id]) alertedHazards[h.id] = new Set();
+          // Fix: a hazard first seen inside 300 m used to fire BOTH the
+          // 1 km and 300 m alerts back-to-back. Mark every crossed
+          // threshold as handled but alert only once, for the closest.
+          const crossed = ALERT_THRESHOLDS_KM.filter(
+            (t) => h.dKm <= t && !alertedHazards[h.id].has(t)
+          );
+          if (crossed.length) {
+            crossed.forEach((t) => alertedHazards[h.id].add(t));
+            showHazardAlert(h, meta);
+          }
+        });
+      }
+
+      function renderHazardList(list, headingKnown, speedKmh) {
+        if (driveHazardSub) {
+          let subText = headingKnown
+            ? "Showing hazards roughly ahead of you, nearest first."
+            : "Keep driving — once your direction is detected, only hazards ahead will show.";
+          // Enhancement: show current speed when the GPS reports one —
+          // useful context while glancing at the panel, and this data
+          // was already coming from the browser, just unused before.
+          if (typeof speedKmh === "number" && speedKmh > 1) {
+            subText = `🚗 ${Math.round(speedKmh)} km/h — ` + subText;
+          }
+          driveHazardSub.textContent = subText;
+        }
+        if (!driveHazardList) return;
+
+        if (!list.length) {
+          driveHazardList.innerHTML =
+            '<p class="muted" style="margin:4px 0;">No hazards detected nearby right now.</p>';
+          return;
+        }
+
+        driveHazardList.innerHTML = "";
+        list.forEach((h) => {
+          const meta = HAZARD_TYPES[h.hazardType] || {
+            label: "Hazard",
+            emoji: "⚠️"
+          };
+          const row = document.createElement("div");
+          row.className = "drive-hazard-row";
+
+          const label = document.createElement("span");
+          label.textContent = `${meta.emoji} ${meta.label}`;
+          row.appendChild(label);
+
+          const dist = document.createElement("span");
+          dist.className = "drive-hazard-dist";
+          dist.textContent = formatDistShort(h.dKm);
+          row.appendChild(dist);
+
+          row.addEventListener("click", () => {
+            window.location.href = "news.html?id=" + encodeURIComponent(h.id);
+          });
+
+          driveHazardList.appendChild(row);
+        });
+      }
+
+      function updateDrivePanel(lat, lng, headingDeg, speedKmh) {
+        const headingKnown = typeof headingDeg === "number";
+
+        const withDistance = driveHazardPosts
+          .map((p) => {
+            const dKm = haversineKm(lat, lng, p.lat, p.lng);
+            let ahead = true;
+            if (headingKnown) {
+              const bearing = bearingTo(lat, lng, p.lat, p.lng);
+              ahead = angleDiff(headingDeg, bearing) <= AHEAD_CONE_DEGREES;
+            }
+            return { ...p, dKm, ahead };
+          })
+          .filter((h) => h.dKm <= MAX_HAZARD_RANGE_KM)
+          .filter((h) => !headingKnown || h.ahead)
+          .sort((a, b) => a.dKm - b.dKm)
+          .slice(0, 8);
+
+        renderHazardList(withDistance, headingKnown, speedKmh);
+        checkProximityAlerts(withDistance);
+      }
+
+      function onDrivePosition(pos) {
+        const { latitude, longitude, heading, speed } = pos.coords;
+
+        // Optimization/UX fix: this used to force-recenter the map on
+        // every single GPS fix, so panning or zooming to look at
+        // something (e.g. an upcoming hazard's exact spot) got yanked
+        // back within seconds. Now it only auto-follows until the user
+        // manually drags/zooms, at which point a "Recenter" button
+        // appears instead of fighting their input.
+        if (driveMapFollowing) {
+          driveSetView(latitude, longitude, Math.max(map.getZoom(), 14));
+        }
+
+        // Prefer the GPS's own heading (only reliable while actually
+        // moving); otherwise estimate it from the last two fixes so
+        // direction still works on devices/browsers that don't report
+        // heading (e.g. many desktop/laptop GPS-less connections).
+        // Fix: GPS heading is garbage when nearly stationary (e.g. at a
+        // red light) and could hide real hazards; require ~1 m/s.
+        const moving = typeof speed === "number" && speed > 1;
+        let travelHeading =
+          moving && typeof heading === "number" && !isNaN(heading)
+            ? heading
+            : null;
+
+        if (travelHeading == null && lastDrivePos) {
+          const movedKm = haversineKm(
+            lastDrivePos.lat,
+            lastDrivePos.lng,
+            latitude,
+            longitude
+          );
+          // Ignore GPS jitter — only trust the bearing once we've
+          // actually moved a meaningful distance (~15m) between fixes.
+          if (movedKm > 0.015) {
+            travelHeading = bearingTo(
+              lastDrivePos.lat,
+              lastDrivePos.lng,
+              latitude,
+              longitude
+            );
+          }
+        }
+
+        if (travelHeading == null && lastDriveHeading != null) {
+          travelHeading = lastDriveHeading; // keep direction while stopped
+        } else if (travelHeading != null) {
+          lastDriveHeading = travelHeading;
+        }
+        lastDrivePos = { lat: latitude, lng: longitude };
+
+        // speed comes from the GPS in m/s (null if the device can't
+        // provide it) — convert to km/h for display.
+        const speedKmh =
+          typeof speed === "number" && !isNaN(speed) && speed >= 0
+            ? speed * 3.6
+            : null;
+
+        updateDrivePanel(latitude, longitude, travelHeading, speedKmh);
+      }
+
+      function onDriveError(err) {
+        console.error("Drive mode location error:", err);
+        alert("Couldn't get your location: " + err.message);
+        stopDriveMode();
+      }
+
+      function startDriveMode() {
+        if (!navigator.geolocation) {
+          alert("Geolocation not supported on this device.");
+          return;
+        }
+        lastDrivePos = null;
+        lastDriveHeading = null;
+        alertedHazards = {};
+        driveMapFollowing = true;
+        if (recenterBtn) recenterBtn.style.display = "none";
+
+        // Seed with hazards already loaded from the initial map load, so
+        // the panel isn't empty for the first 60s while waiting on the
+        // dedicated refresh below.
+        driveHazardPosts = allPosts.filter((p) => p.hazardType);
+        refreshDriveHazards();
+
+        if (driveModeBtn) {
+          driveModeBtn.textContent = "🚗 Driving...";
+          driveModeBtn.classList.add("driving");
+          driveModeBtn.style.display = "none";
+        }
+        if (driveHazardPanel) driveHazardPanel.style.display = "block";
+
+        driveWatchId = navigator.geolocation.watchPosition(
+          onDrivePosition,
+          onDriveError,
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+        );
+
+        // Refresh the hazard list every 60s so hazards reported by
+        // others while you're on a long drive still show up. This only
+        // re-queries hazard posts (see refreshDriveHazards) rather than
+        // the full map, so it's cheap and doesn't touch the visible pins.
+        driveRefreshInterval = setInterval(refreshDriveHazards, 60000);
+        requestWakeLock();
+      }
+
+      // Enhancement: a sleeping screen pauses GPS updates in most mobile
+      // browsers, silently disabling alerts mid-drive. Hold a wake lock
+      // while Drive Mode is on (no-op where unsupported).
+      async function requestWakeLock() {
+        try {
+          if ("wakeLock" in navigator && !wakeLock) {
+            wakeLock = await navigator.wakeLock.request("screen");
+            wakeLock.addEventListener("release", () => { wakeLock = null; });
+          }
+        } catch (e) {
+          console.warn("Wake lock unavailable:", e);
+        }
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && driveWatchId != null) {
+          requestWakeLock(); // the lock is auto-released when tab hides
+        }
+      });
+
+      function stopDriveMode() {
+        if (driveWatchId != null) {
+          navigator.geolocation.clearWatch(driveWatchId);
+          driveWatchId = null;
+        }
+        if (driveRefreshInterval) {
+          clearInterval(driveRefreshInterval);
+          driveRefreshInterval = null;
+        }
+        if (driveModeBtn) {
+          driveModeBtn.textContent = "🚗 Start Drive Mode";
+          driveModeBtn.classList.remove("driving");
+          driveModeBtn.style.display = "inline-flex";
+        }
+        if (driveHazardPanel) driveHazardPanel.style.display = "none";
+        if (recenterBtn) recenterBtn.style.display = "none";
+        if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+      }
+
+      if (driveModeBtn) driveModeBtn.addEventListener("click", startDriveMode);
+      if (stopDriveModeBtn)
+        stopDriveModeBtn.addEventListener("click", stopDriveMode);
+
+      // Recenter button: reappears once the user pans/zooms away from
+      // their live position during Drive Mode, and snaps back on tap.
+      map.on("dragstart zoomstart", () => {
+        if (suppressFollowCancel) return; // our own programmatic move, not the user
+        if (driveWatchId == null) return; // only relevant while driving
+        if (driveMapFollowing) {
+          driveMapFollowing = false;
+          if (recenterBtn) recenterBtn.style.display = "inline-flex";
+        }
+      });
+
+      if (recenterBtn) {
+        recenterBtn.addEventListener("click", () => {
+          driveMapFollowing = true;
+          recenterBtn.style.display = "none";
+          if (lastDrivePos) {
+            driveSetView(
+              lastDrivePos.lat,
+              lastDrivePos.lng,
+              Math.max(map.getZoom(), 14)
+            );
+          }
+        });
+      }
+
+      // Stop watching GPS if the user navigates away — avoids draining
+      // battery in the background after leaving the map page.
+      window.addEventListener("beforeunload", () => {
+        if (driveWatchId != null) navigator.geolocation.clearWatch(driveWatchId);
+        if (driveRefreshInterval) clearInterval(driveRefreshInterval);
+      });
     </script>
   </body>
 </html>

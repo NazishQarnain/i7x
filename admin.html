@@ -1,12 +1,35 @@
 <!DOCTYPE html>
+<!-- App version: 1.6.1 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nearby News - Admin Panel</title>
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- Navbar (was missing before — admin had no way back to the rest of the site) -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <button id="menuToggle" class="menu-btn">&#9776;</button>
+        <img src="logo.png" alt="Nearby News logo" class="app-logo" />
+        <span class="app-title">Nearby News</span>
+      </div>
+      <button id="themeToggle" class="menu-btn" aria-label="Toggle dark mode">🌓</button>
+      <nav id="sideMenu" class="side-menu">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login / Signup</a>
+        <a href="account.html">Account</a>
+        <a href="app.html">Create / Nearby News</a>
+        <a href="map.html">Live Map</a>
+        <a href="admin.html">Admin</a>
+        <div class="side-menu-version">v<span id="appVersion"></span></div>
+      </nav>
+      <div id="backdrop" class="backdrop"></div>
+    </header>
+
     <div class="admin-container">
       <div class="section-card admin-header">
         <div class="top-row">
@@ -21,12 +44,7 @@
             </p>
           </div>
           <div class="top-row-right">
-            <button
-              id="logoutBtn"
-              type="button"
-              class="logout-btn"
-              onclick="firebase.auth().signOut()"
-            >
+            <button id="logoutBtn" type="button" class="logout-btn">
               Logout
             </button>
           </div>
@@ -90,20 +108,18 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <!-- Bug fix: admin.html used to hardcode its own duplicate (and
+         incomplete) firebaseConfig instead of the shared one — any
+         future config change (e.g. storage bucket) would silently not
+         apply here. Now uses the single shared file like every other page. -->
     <script src="firebaseConfig.js"></script>
 
-    <script>
-      // --- Firebase init handled by firebaseConfig.js ---
-      const db = firebase.firestore();
+    <!-- Navbar JS -->
+    <script src="nav.js" defer></script>
 
-      function escapeHtml(str) {
-        return String(str)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
+    <script>
+      const db = firebase.firestore();
 
       // --- Admin reference location for distance (Dahmi Kalan example) ---
       const ADMIN_REF_LOCATION = {
@@ -273,6 +289,14 @@
         return `${dayName}, ${datePart} ${timePart}`;
       };
 
+      // Escapes text before it goes into innerHTML, so post titles/content
+      // (user-submitted) can never inject HTML/script into the admin table.
+      const escapeHtml = (str) => {
+        const div = document.createElement("div");
+        div.textContent = str == null ? "" : String(str);
+        return div.innerHTML;
+      };
+
       const renderPostsTable = (docs) => {
         if (!docs.length) {
           postsTableWrapper.innerHTML = "<p>No posts found.</p>";
@@ -297,13 +321,22 @@
           const distanceText =
             distanceKm != null ? distanceKm.toFixed(1) + " km" : "-";
 
+          // Bug fix: "..." used to be appended unconditionally, even
+          // when the content was shorter than the 120-char slice —
+          // making short posts look truncated when they weren't.
+          const rawContent = data.content || "";
+          const contentPreview =
+            rawContent.length > 120
+              ? rawContent.slice(0, 120).trimEnd() + "..."
+              : rawContent;
+
           rowsHtml += `
             <tr>
               <td>${escapeHtml(data.title || "")}</td>
-              <td>${escapeHtml((data.content || "").slice(0, 120))}...</td>
+              <td>${escapeHtml(contentPreview)}</td>
               <td>${escapeHtml(data.userId || "")}</td>
               <td>${escapeHtml(locationText)}</td>
-              <td>${escapeHtml(distanceText)}</td>
+              <td>${distanceText}</td>
               <td>${escapeHtml(createdAt)}</td>
               <td>${escapeHtml(sourceText)}</td>
               <td>${isExternalBadge}</td>
@@ -335,6 +368,9 @@
           </table>
         `;
 
+        // Delegate delete clicks via data-attribute instead of inline
+        // onclick="deletePost('...')" — safer, and avoids ever building
+        // executable JS strings out of Firestore data.
         postsTableWrapper.querySelectorAll("[data-delete-id]").forEach((btn) => {
           btn.addEventListener("click", () => {
             deletePost(btn.getAttribute("data-delete-id"));
@@ -441,13 +477,16 @@
       }
 
       async function deletePost(postId) {
-        if (!isAdmin) {
-          alert("Only admin can delete posts.");
-          return;
-        }
         if (!confirm("Delete this post?")) return;
         try {
           await db.collection("posts").doc(postId).delete();
+          // Bug fix: this used to call loadPostsForAdmin() without
+          // resetting pagination.stack first. If you deleted a post
+          // while on page 2+, it silently reloaded page 1's data but
+          // left the "Prev" button enabled (using the stale stack from
+          // before) — clicking it did nothing useful. Reset state so
+          // the pagination buttons match what's actually on screen.
+          resetPagination();
           loadPostsForAdmin();
         } catch (e) {
           console.error("Delete post error:", e);
@@ -470,11 +509,17 @@
           const docSnap = await db.collection("users").doc(user.uid).get();
           const data = docSnap.exists ? docSnap.data() : null;
 
-          const hasAdminRole =
-            data &&
-            (data.role === "admin" ||
-              data.isAdmin === true ||
-              data.is_admin === true);
+          // Bug fix: this used to also accept isAdmin===true / is_admin===true
+          // as alternate admin fields — but firestore.rules only recognizes
+          // role === "admin". That mismatch meant an account using one of
+          // the old field names could see this whole panel (client check
+          // passed) while every actual write (delete, import) silently
+          // failed with a permission-denied error from Firestore (server
+          // check failed). Checking the same single field here as the
+          // rules do keeps the UI and the actual permissions in sync — if
+          // your account used isAdmin/is_admin before, update it to
+          // role: "admin" in the users/{uid} document.
+          const hasAdminRole = data && data.role === "admin";
 
           if (!hasAdminRole) {
             isAdmin = false;
@@ -638,6 +683,15 @@
 
       // --- Event listeners ---
       document.addEventListener("DOMContentLoaded", () => {
+        const logoutBtn = document.getElementById("logoutBtn");
+        if (logoutBtn) {
+          logoutBtn.addEventListener("click", () => {
+            firebase.auth().signOut().catch((e) => {
+              alert("Logout error: " + e.message);
+            });
+          });
+        }
+
         if (importRandomNewsBtn) {
           importRandomNewsBtn.addEventListener("click", () => {
             if (!isAdmin) {
@@ -666,6 +720,16 @@
           applyDateFilterBtn.addEventListener("click", () => {
             const startVal = filterStartInput.value;
             const endVal = filterEndInput.value;
+
+            // Bug fix: if the end date was before the start date, the
+            // Firestore range query would just silently return zero
+            // results ("No posts found") with no explanation — looked
+            // like a broken filter or an empty database. Catch it and
+            // tell the admin what actually went wrong.
+            if (startVal && endVal && endVal < startVal) {
+              alert("End date can't be before start date.");
+              return;
+            }
 
             currentFilter.start = startVal
               ? firebase.firestore.Timestamp.fromDate(

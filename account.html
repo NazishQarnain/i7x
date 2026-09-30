@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- App version: 1.6.1 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -7,6 +8,8 @@
       content="width=device-width, initial-scale=1"
     />
     <title>Nearby News - My Account</title>
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="stylesheet" href="style.css" />
   </head>
 
@@ -26,6 +29,7 @@
         <a href="app.html">Create / Nearby News</a>
         <a href="map.html">Live Map</a>
         <a href="admin.html">Admin</a>
+        <div class="side-menu-version">v<span id="appVersion"></span></div>
       </nav>
       <div id="backdrop" class="backdrop"></div>
     </header>
@@ -80,15 +84,6 @@
         const logoutBtn = document.getElementById("acctLogoutBtn");
         const myPostsWrapper = document.getElementById("myPostsWrapper");
 
-        function escapeHtml(str) {
-          return String(str)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-        }
-
         function renderMyPosts(docs) {
           if (!myPostsWrapper) return;
 
@@ -98,17 +93,14 @@
             return;
           }
 
-          let html = `
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-          `;
+          // Built with DOM APIs (not innerHTML) so a post title can never
+          // be interpreted as HTML/script — prevents stored XSS.
+          myPostsWrapper.innerHTML = "";
+          const table = document.createElement("table");
+          table.className = "admin-table";
+          table.innerHTML =
+            "<thead><tr><th>Title</th><th>Created</th><th>Actions</th></tr></thead>";
+          const tbody = document.createElement("tbody");
 
           docs.forEach((doc) => {
             const data = doc.data();
@@ -118,26 +110,45 @@
                 ? data.createdAt.toDate().toLocaleString("en-IN")
                 : "N/A";
 
-            html += `
-              <tr data-id="${doc.id}">
-                <td>${escapeHtml(title)}</td>
-                <td>${escapeHtml(created)}</td>
-                <td>
-                  <button class="small-btn" data-open="${doc.id}">Open</button>
-                  <button class="small-btn danger-btn" data-delete="${doc.id}">Delete</button>
-                </td>
-              </tr>
-            `;
+            const tr = document.createElement("tr");
+            tr.dataset.id = doc.id;
+
+            const titleTd = document.createElement("td");
+            titleTd.textContent = title;
+            tr.appendChild(titleTd);
+
+            const createdTd = document.createElement("td");
+            createdTd.textContent = created;
+            tr.appendChild(createdTd);
+
+            const actionsTd = document.createElement("td");
+            const openBtn = document.createElement("button");
+            openBtn.className = "small-btn";
+            openBtn.dataset.open = doc.id;
+            openBtn.textContent = "Open";
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "small-btn danger-btn";
+            deleteBtn.dataset.delete = doc.id;
+            deleteBtn.textContent = "Delete";
+            actionsTd.appendChild(openBtn);
+            actionsTd.appendChild(document.createTextNode(" "));
+            actionsTd.appendChild(deleteBtn);
+            tr.appendChild(actionsTd);
+
+            tbody.appendChild(tr);
           });
 
-          html += "</tbody></table>";
-          myPostsWrapper.innerHTML = html;
+          table.appendChild(tbody);
+          myPostsWrapper.appendChild(table);
 
           myPostsWrapper.querySelectorAll("[data-open]").forEach((btn) => {
             btn.addEventListener("click", (e) => {
               e.stopPropagation();
               const id = btn.getAttribute("data-open");
-              window.open("news.html?id=" + id, "_blank");
+              // Consistency fix: every other place in the app that builds
+              // a news.html link (map.html, index.html cards) URL-encodes
+              // the post id first; this one didn't.
+              window.open("news.html?id=" + encodeURIComponent(id), "_blank");
             });
           });
 

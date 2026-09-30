@@ -1,4 +1,5 @@
 // Nearby News & Alert System - Optimized app.js with image compression + reverse geocoding
+// App version: 1.8.1 — see CHANGELOG.md for history
 
 document.addEventListener("DOMContentLoaded", () => {
   const $ = (id) => document.getElementById(id);
@@ -11,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const userInfo = $("userInfo");
   const titleInput = $("titleInput");
   const contentInput = $("contentInput");
+  const postTypeInput = $("postTypeInput");
   const imageInput = $("imageInput");
   const postBtn = $("postBtn");
   const loadNearbyBtn = $("loadNearbyBtn");
@@ -18,6 +20,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let currentUser = null;
   let db = null;
+
+  // Shared metadata for road-hazard post types (used here and mirrored
+  // in index.html / map.html / news.html since this is a plain static
+  // site with no shared JS module system).
+  const HAZARD_TYPES = {
+    road_damage: { label: "Road Damage", emoji: "🚧", color: "#f97316" },
+    bridge_damage: { label: "Bridge Damage/Closed", emoji: "🌉", color: "#dc2626" },
+    accident: { label: "Accident", emoji: "🚗", color: "#b91c1c" },
+    flooding: { label: "Flooding", emoji: "🌊", color: "#0284c7" },
+    other_hazard: { label: "Road Hazard", emoji: "⚠️", color: "#ca8a04" }
+  };
 
   // ---------- FIREBASE INIT ----------
   function initFirebase() {
@@ -104,6 +117,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function clearPostForm() {
     if (titleInput) titleInput.value = "";
     if (contentInput) contentInput.value = "";
+    if (postTypeInput) postTypeInput.value = "";
     if (imageInput) imageInput.value = "";
   }
 
@@ -136,8 +150,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
           canvas.width = width;
           canvas.height = height;
+          // Fix: JPEG has no alpha channel, so transparent PNGs/WebPs
+          // turned black. Paint a white background first.
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
 
+          // Optimization: the old version re-tried the *same* quality
+          // level twice per loop (compress, then immediately compress
+          // again at the already-decremented quality before recursing),
+          // roughly doubling canvas.toBlob calls for no benefit. This
+          // does one attempt per quality step, stepping down until it
+          // fits the target size or hits the floor.
           let quality = 0.9;
 
           const tryCompress = () => {
@@ -147,12 +171,10 @@ document.addEventListener("DOMContentLoaded", () => {
                   reject(new Error("Canvas toBlob failed"));
                   return;
                 }
-
                 if (blob.size <= targetBytes || quality <= 0.3) {
                   resolve(blob);
                   return;
                 }
-
                 quality = Math.max(0.3, quality - 0.1);
                 tryCompress();
               },
@@ -246,6 +268,8 @@ document.addEventListener("DOMContentLoaded", () => {
       showAlert("Please fill email & password.");
       return;
     }
+    // Bug fix: button wasn't disabled during the request, so a slow
+    // network + double click could fire this twice.
     if (signupBtn) signupBtn.disabled = true;
     firebase
       .auth()
@@ -290,10 +314,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------- CREATE POST ----------
-  const MAX_TITLE_LEN = 120;
-  const MAX_CONTENT_LEN = 2000;
-  const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB raw upload cap
-
   function handleCreatePost() {
     if (!currentUser) {
       showAlert("Please login first.");
@@ -304,30 +324,50 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const title = getInputValue(titleInput).slice(0, MAX_TITLE_LEN);
-    const content = getInputValue(contentInput).slice(0, MAX_CONTENT_LEN);
+    const title = getInputValue(titleInput);
+    const content = getInputValue(contentInput);
+    const hazardType = postTypeInput ? postTypeInput.value || null : null;
     const file = imageInput?.files?.[0] || null;
 
     if (!title || !content) {
       showAlert("Please fill title & details.");
       return;
     }
-
-    if (file) {
-      if (!file.type || !file.type.startsWith("image/")) {
-        showAlert("Please select a valid image file.");
-        return;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        showAlert("Image is too large. Please choose a file under 8MB.");
-        return;
-      }
+    // Fix: maxlength exists only in the HTML, so it was trivially
+    // bypassable. Enforce the same limits in JS.
+    if (title.length > 150 || content.length > 3000) {
+      showAlert("Title max 150 and details max 3000 characters.");
+      return;
+    }
+    if (file && !file.type.startsWith("image/")) {
+      showAlert("Please choose an image file.");
+      return;
     }
 
+    // Bug fix: there was no limit on the selected file's size before
+    // handing it to canvas-based compression — a very large image
+    // (e.g. 40MB raw photo) could freeze the tab for several seconds
+    // while the browser decodes/draws it. Reject oversized files early
+    // with a clear message instead.
+    const MAX_IMAGE_MB = 20;
+    if (file && file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      showAlert(`Image is too large. Please choose a file under ${MAX_IMAGE_MB}MB.`);
+      return;
+    }
+
+    // Bug fix: postBtn had no disabled state, so clicking it twice while
+    // the (potentially slow) image upload + geolocation lookup was still
+    // running created two duplicate posts.
     if (postBtn) {
       postBtn.disabled = true;
-      postBtn.textContent = "Getting location...";
+      postBtn.textContent = "Posting...";
     }
+    const resetPostBtn = () => {
+      if (postBtn) {
+        postBtn.disabled = false;
+        postBtn.textContent = "Post with my location";
+      }
+    };
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -335,8 +375,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const lng = pos.coords.longitude;
 
         try {
-          if (postBtn) postBtn.textContent = "Posting...";
-
           let imageUrl = null;
           if (file) imageUrl = await uploadToImgBB(file);
 
@@ -349,7 +387,8 @@ document.addEventListener("DOMContentLoaded", () => {
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             location: new firebase.firestore.GeoPoint(lat, lng),
             imageUrl: imageUrl || null,
-            address: address || null
+            address: address || null,
+            hazardType: hazardType || null
           });
 
           showAlert("Post created.");
@@ -358,19 +397,13 @@ document.addEventListener("DOMContentLoaded", () => {
           console.error("Error creating post:", e);
           showAlert("Error creating post: " + e.message);
         } finally {
-          if (postBtn) {
-            postBtn.disabled = false;
-            postBtn.textContent = "Post with my location";
-          }
+          resetPostBtn();
         }
       },
       (err) => {
         console.error("Location error (create post):", err);
         showAlert("Location error: " + err.message);
-        if (postBtn) {
-          postBtn.disabled = false;
-          postBtn.textContent = "Post with my location";
-        }
+        resetPostBtn();
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
@@ -388,17 +421,33 @@ document.addEventListener("DOMContentLoaded", () => {
         ? content.slice(0, 120).trimEnd() + "..."
         : content;
 
+    // Enhancement: road-hazard posts get a colored badge so they stand
+    // out from regular news in the nearby list.
+    const hazardMeta = data.hazardType ? HAZARD_TYPES[data.hazardType] : null;
+    if (hazardMeta) {
+      const badge = document.createElement("span");
+      badge.className = "hazard-badge";
+      badge.style.background = hazardMeta.color;
+      badge.textContent = `${hazardMeta.emoji} ${hazardMeta.label}`;
+      li.appendChild(badge);
+      li.appendChild(document.createElement("br"));
+    }
+
     let line = `${title} - ${fullContent}`;
     if (distanceText) line += ` (${distanceText})`;
     if (address) line += ` • ${address}`;
 
-    li.textContent = line;
+    li.appendChild(document.createTextNode(line));
 
     if (data.imageUrl) {
       const img = document.createElement("img");
       img.src = data.imageUrl;
       img.alt = title || "news image";
       img.className = "news-image";
+      img.loading = "lazy";
+      // Bug fix: a dead ImgBB link (expired/deleted) used to leave a
+      // broken-image icon sitting in the list; just remove it instead.
+      img.onerror = () => img.remove();
       li.appendChild(document.createElement("br"));
       li.appendChild(img);
     }
@@ -433,8 +482,32 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
           }
 
-          snap.forEach((doc) => {
+          // Bug fix: this button is literally called "Load nearby news"
+          // and computes a distance for every post, but never actually
+          // sorted by that distance — it just showed the 50 most recent
+          // posts in whatever order Firestore returned them, regardless
+          // of how far away they were. Sorting nearest-first here
+          // matches what index.html's home feed already does.
+          const withDistance = snap.docs.map((doc) => {
             const data = doc.data();
+            let dKm = Number.POSITIVE_INFINITY;
+            if (
+              data.location &&
+              typeof data.location.latitude === "number" &&
+              typeof data.location.longitude === "number"
+            ) {
+              dKm = haversineDistance(
+                userLat,
+                userLng,
+                data.location.latitude,
+                data.location.longitude
+              );
+            }
+            return { data, dKm };
+          });
+          withDistance.sort((a, b) => a.dKm - b.dKm);
+
+          withDistance.forEach(({ data }) => {
             const distanceText = formatDistance(
               userLat,
               userLng,
@@ -461,7 +534,7 @@ document.addEventListener("DOMContentLoaded", () => {
           loadNearbyBtn.textContent = "Load nearby news";
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     );
   }
 
@@ -472,4 +545,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (postBtn) postBtn.addEventListener("click", handleCreatePost);
   if (loadNearbyBtn)
     loadNearbyBtn.addEventListener("click", handleLoadNearby);
+
+  // Enhancement: Enter key in email/password fields logs in, instead of
+  // doing nothing (these inputs aren't wrapped in a <form>).
+  [emailInput, passwordInput].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !(loginBtn && loginBtn.disabled)) handleLogin();
+    });
+  });
 });

@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- App version: 1.6.1 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -7,6 +8,8 @@
       content="width=device-width, initial-scale=1"
     />
     <title>Nearby News - Login</title>
+    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="theme-color" content="#1e293b" />
     <link rel="stylesheet" href="style.css" />
   </head>
 
@@ -26,6 +29,7 @@
         <a href="app.html">Create / Nearby News</a>
         <a href="map.html">Live Map</a>
         <a href="admin.html">Admin</a>
+        <div class="side-menu-version">v<span id="appVersion"></span></div>
       </nav>
       <div id="backdrop" class="backdrop"></div>
     </header>
@@ -100,44 +104,53 @@
           return el ? el.value.trim() : "";
         }
 
-        function doSignup() {
-          const email = getVal(emailEl);
-          const pass = getVal(passEl);
-          if (!email || !pass) {
-            alert("Please fill email & password.");
-            return;
-          }
-          if (signupBtn) signupBtn.disabled = true;
-          firebase
-            .auth()
-            .createUserWithEmailAndPassword(email, pass)
-            .then(() => {
-              window.location.href = "account.html";
-            })
-            .catch((e) => alert("Signup error: " + e.message))
-            .finally(() => {
-              if (signupBtn) signupBtn.disabled = false;
-            });
+        // Bug fix: buttons stayed clickable during the network request,
+        // so a slow connection + impatient double-click could fire
+        // createUserWithEmailAndPassword/signIn twice. Disable while busy.
+        function setBusy(busy) {
+          [signupBtn, loginBtn].forEach((btn) => {
+            if (btn) btn.disabled = busy;
+          });
         }
 
-        function doLogin() {
+        async function doSignup() {
           const email = getVal(emailEl);
           const pass = getVal(passEl);
           if (!email || !pass) {
             alert("Please fill email & password.");
             return;
           }
-          if (loginBtn) loginBtn.disabled = true;
-          firebase
-            .auth()
-            .signInWithEmailAndPassword(email, pass)
-            .then(() => {
-              window.location.href = "account.html";
-            })
-            .catch((e) => alert("Login error: " + e.message))
-            .finally(() => {
-              if (loginBtn) loginBtn.disabled = false;
-            });
+          setBusy(true);
+          try {
+            await firebase.auth().createUserWithEmailAndPassword(email, pass);
+            // Bug fix: page never redirected after a successful signup,
+            // leaving the user stuck looking at the login form.
+            window.location.href = "app.html";
+          } catch (e) {
+            alert("Signup error: " + e.message);
+          } finally {
+            setBusy(false);
+          }
+        }
+
+        async function doLogin() {
+          const email = getVal(emailEl);
+          const pass = getVal(passEl);
+          if (!email || !pass) {
+            alert("Please fill email & password.");
+            return;
+          }
+          setBusy(true);
+          try {
+            await firebase.auth().signInWithEmailAndPassword(email, pass);
+            // Bug fix: same as signup — redirect on success instead of
+            // leaving the user on the login page.
+            window.location.href = "app.html";
+          } catch (e) {
+            alert("Login error: " + e.message);
+          } finally {
+            setBusy(false);
+          }
         }
 
         function doLogout() {
@@ -149,6 +162,15 @@
         if (signupBtn) signupBtn.addEventListener("click", doSignup);
         if (loginBtn) loginBtn.addEventListener("click", doLogin);
         if (logoutBtn) logoutBtn.addEventListener("click", doLogout);
+
+        // Enhancement: pressing Enter in either field submits (login by
+        // default, since that's the more common action).
+        [emailEl, passEl].forEach((el) => {
+          if (!el) return;
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") doLogin();
+          });
+        });
       });
     </script>
 

@@ -1,4 +1,5 @@
 /* BASIC RESET */
+/* App version: 1.6.1 — see CHANGELOG.md for history */
 * {
   box-sizing: border-box;
 }
@@ -9,6 +10,15 @@ body {
     sans-serif;
   background: #f4f4f7;
   color: #111827;
+  color-scheme: light;
+}
+
+/* Enhancement: without this, native browser UI (date-picker calendar
+   icon on <input type="date">, scrollbars) stayed light-themed even
+   when the site's dark mode was on — this tells the browser to render
+   its own controls dark too. */
+body.dark {
+  color-scheme: dark;
 }
 
 /* TOP NAVBAR */
@@ -81,6 +91,23 @@ body {
   background: #1f2937;
 }
 
+/* Enhancement: shows which page you're currently on inside the menu */
+.side-menu a.active {
+  background: #1e293b;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+/* Version number shown at the bottom of the side menu (see CHANGELOG.md) */
+.side-menu-version {
+  margin-top: auto;
+  padding: 8px;
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
+}
+
 .side-menu.open {
   left: 0;
 }
@@ -147,6 +174,7 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="file"],
+select,
 textarea {
   width: 100%;
   margin: 6px 0;
@@ -154,6 +182,9 @@ textarea {
   border-radius: 6px;
   border: 1px solid #d1d5db;
   font-size: 14px;
+  background: #fff;
+  color: #111827;
+  font-family: inherit;
 }
 
 textarea {
@@ -273,12 +304,14 @@ button.full-width {
   font-size: 16px;
   font-weight: 600;
   color: #111827;
+  overflow-wrap: break-word;
 }
 
 .news-card p {
   margin: 0;
   font-size: 13px;
   color: #4b5563;
+  overflow-wrap: break-word;
 }
 
 .news-card .news-meta-small {
@@ -349,6 +382,7 @@ button.full-width {
   line-height: 1.3;
   font-weight: 700;
   color: #111827;
+  overflow-wrap: break-word;
 }
 
 #newsMeta {
@@ -366,6 +400,7 @@ button.full-width {
 
 #newsBody {
   white-space: pre-wrap;
+  overflow-wrap: break-word;
   font-size: 15px;
   line-height: 1.7;
   color: #111827;
@@ -415,6 +450,151 @@ button.full-width {
   font-size: 12px;
 }
 
+/* HAZARD BADGES (on news cards / list items / detail page) */
+
+.hazard-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+/* HAZARD MAP MARKERS (custom Leaflet divIcon) */
+
+.hazard-marker-inner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* DRIVE MODE */
+
+.drive-mode-btn {
+  position: absolute;
+  z-index: 500;
+  bottom: 12px;
+  right: 12px;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #16a34a;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.drive-mode-btn:hover {
+  background: #15803d;
+}
+
+.drive-mode-btn.driving {
+  background: #dc2626;
+}
+
+.drive-mode-btn.driving:hover {
+  background: #b91c1c;
+}
+
+.recenter-btn {
+  bottom: 68px;
+  background: #2563eb;
+}
+
+.recenter-btn:hover {
+  background: #1d4ed8;
+}
+
+.drive-hazard-panel {
+  position: absolute;
+  z-index: 500;
+  top: 80px;
+  left: 12px;
+  right: 12px;
+  max-width: 360px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f9fafb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.drive-hazard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.drive-hazard-sub {
+  font-size: 11px;
+  color: #cbd5e1;
+  margin: 0 0 8px;
+}
+
+.drive-hazard-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+}
+
+.drive-hazard-row:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.drive-hazard-dist {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hazard-toast {
+  position: fixed;
+  z-index: 900;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #b91c1c;
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: hazard-toast-in 0.2s ease-out;
+  max-width: 90vw;
+  text-align: center;
+}
+
+@keyframes hazard-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* RESPONSIVE */
 
 @media (max-width: 600px) {
@@ -433,6 +613,16 @@ button.full-width {
 
   #newsTitle {
     font-size: 19px;
+  }
+
+  .drive-hazard-panel {
+    max-width: none;
+    max-height: 45vh;
+  }
+
+  .drive-mode-btn {
+    padding: 9px 14px;
+    font-size: 13px;
   }
 }
 
@@ -477,6 +667,11 @@ body.dark .side-menu a:hover {
   background: #111827;
 }
 
+body.dark .side-menu a.active {
+  background: #111827;
+  box-shadow: inset 3px 0 0 #60a5fa;
+}
+
 body.dark .panel,
 body.dark .news-card,
 body.dark .section-card {
@@ -496,6 +691,7 @@ body.dark input[type="text"],
 body.dark input[type="email"],
 body.dark input[type="password"],
 body.dark input[type="file"],
+body.dark select,
 body.dark textarea {
   background: #020617;
   color: #e5e7eb;
@@ -565,6 +761,23 @@ body.dark .logout-btn {
 
 body.dark .logout-btn:hover {
   background: #991b1b;
+}
+
+/* Bug fix: these two elements had no dark-mode override, so they stayed
+   bright/light-colored even with dark mode on — a jarring light box in
+   an otherwise dark UI. */
+body.dark .admin-badge {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+body.dark .back-btn {
+  background: #1f2937;
+  color: #e5e7eb;
+}
+
+body.dark .back-btn:hover {
+  background: #374151;
 }
 
 /* Admin page styles */
@@ -686,6 +899,30 @@ body.dark .logout-btn:hover {
   background: #fee2e2;
 }
 
+/* Bug fix: account.html's "Delete" button used class .danger-btn but it
+   was never styled — it looked identical to a normal gray button, giving
+   no visual warning before a destructive action. */
+.small-btn.danger-btn {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.small-btn.danger-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+body.dark .small-btn.danger-btn {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+  color: #fee2e2;
+}
+
+body.dark .small-btn.danger-btn:hover {
+  background: #991b1b;
+}
+
 .readonly-input {
   width: 100%;
   border-radius: 999px;
@@ -699,7 +936,28 @@ body.dark .logout-btn:hover {
 
 .readonly-input:focus {
   outline: none;
-  border-color: #d1d5db;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+/* Accessibility fix: nothing in the original CSS gave keyboard users a
+   visible focus indicator on buttons/links (mouse users never noticed,
+   but Tab-only navigation had no way to see which control was focused).
+   :focus-visible only shows this ring for keyboard focus, not mouse
+   clicks, so it doesn't add visual noise for pointer users. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+body.dark a:focus-visible,
+body.dark button:focus-visible,
+body.dark input:focus-visible,
+body.dark textarea:focus-visible {
+  outline-color: #60a5fa;
 }
 
 .info-row {
@@ -718,3 +976,12 @@ body.dark .logout-btn:hover {
   font-weight: 500;
   color: #111827;
 }
+
+/* ---- Home tabs + Explore (v1.8.0) ---- */
+.home-tabs{display:flex;gap:8px;margin:8px 0 12px}
+.home-tab{flex:1;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:transparent;color:inherit;font-weight:600;cursor:pointer}
+.home-tab.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.explore-heading{margin:14px 0 8px;font-size:1rem}
+.explore-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.explore-btn{padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:transparent;color:inherit;font-size:.8rem;cursor:pointer}
+.explore-btn:disabled{opacity:.5}
