@@ -17,7 +17,7 @@ Built with plain HTML, CSS and JavaScript on top of Firebase. No build step, no 
 - Account page with your profile and **My Posts** (open or delete your own)
 
 ### Explore (recommender)
-Home has **Nearby** and **Explore** tabs. Explore shows "⚠️ Abhi zaroori" (urgent hazards near you) and "✨ Tumhare liye" (ranked by `0.4·urgency + 0.3·interest + 0.15·popularity + 0.15·freshness − already_seen`). Like, Save and Not interested feed your interest profile (kept in localStorage). Logic lives in `explore.js`.
+Home has **Nearby** and **Explore** tabs. Explore shows "⚠️ Happening now" (urgent hazards near you) and "✨ For you" (ranked by `0.4·urgency + 0.3·interest + 0.15·popularity + 0.15·freshness − already_seen`). Like, Save and Not interested feed your interest profile (kept in localStorage). Logic lives in `explore.js`.
 
 ### Post types and hazards
 Each post can be tagged as: General News, Road Damage, Bridge Damage/Closed, Accident, Flooding, or Other Hazard. Hazard posts get a colored badge in every list and a distinct map pin (🚧 🌉 🚗 🌊 ⚠️).

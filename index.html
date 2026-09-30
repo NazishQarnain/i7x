@@ -45,9 +45,9 @@
         <div id="newsList" class="news-list"></div>
       </div>
       <div id="explorePane" style="display:none">
-        <h3 class="explore-heading">⚠️ Abhi zaroori</h3>
+        <h3 class="explore-heading">⚠️ Happening now</h3>
         <div id="urgentList" class="news-list"></div>
-        <h3 class="explore-heading">✨ Tumhare liye</h3>
+        <h3 class="explore-heading">✨ For you</h3>
         <div id="forYouList" class="news-list"></div>
       </div>
     </main>
@@ -111,7 +111,7 @@
         return R * c;
       }
 
-      // lat/lng → exact, warna country/address se approx
+      // lat/lng → exact, otherwise approximate from country/address
       function formatDistanceOnly(data) {
         if (!userLocation) return "";
 
@@ -373,8 +373,8 @@
         try {
           const docs = await Explore.fetchCandidates(db);
           const { urgent, forYou } = Explore.rank(docs, userLocation);
-          fillExplore(uEl, urgent, userLocation ? "Abhi aapke paas koi urgent hazard nahi. 👍" : "Urgent hazards dekhne ke liye location allow karein.");
-          fillExplore(fEl, forYou, "Abhi dikhane ke liye kuch nahi.");
+          fillExplore(uEl, urgent, userLocation ? "No urgent hazards near you right now. 👍" : "Allow location access to see urgent hazards near you.");
+          fillExplore(fEl, forYou, "Nothing to show right now.");
           exploreLoaded = true;
         } catch (e) {
           console.error("Explore load error:", e);

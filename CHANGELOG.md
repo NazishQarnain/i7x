@@ -18,6 +18,8 @@ side menu — bottom of the list).
   loaded once per session (2 reads) and shared.
 - Optimized: home location uses a cached fix (up to 60 s) with normal
   accuracy, so the feed loads faster.
+- Changed: all on-site text is now English ("Happening now", "For you",
+  empty-state and location messages were previously Hinglish).
 - Interest weights are clamped (-10..30) so one category cannot dominate
   forever.
 
@@ -26,8 +28,8 @@ side menu — bottom of the list).
 - Added: home page now has **Nearby** and **Explore** tabs.
 - Explore ranks the last 7 days of posts with
   `score = 0.4·urgency + 0.3·interest + 0.15·popularity + 0.15·freshness − already_seen`.
-  - "⚠️ Abhi zaroori": top 5 hazards by severity × proximity (2–15 km) × recency (24 h).
-  - "✨ Tumhare liye": everything else by score.
+  - "⚠️ Happening now": top 5 hazards by severity × proximity (2–15 km) × recency (24 h).
+  - "✨ For you": everything else by score.
   - Cold start uses the default (no categories asked at signup); interest
     builds from opens (+1), likes (+3), saves (+4), not-interested (−5).
 - Added: 👍 Like, 🔖 Save and 🚫 Not interested actions (Explore cards);
