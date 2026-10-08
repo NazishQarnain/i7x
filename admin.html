@@ -441,20 +441,30 @@
             .get();
 
           const docs = snap.docs;
-          renderPostsTable(docs);
 
-          if (docs.length) {
-            pagination.firstDoc = docs[0];
-            pagination.lastDoc = docs[docs.length - 1];
-            pagination.hasNext = docs.length === PAGE_SIZE;
-            pagination.hasPrev = pagination.stack.length > 0;
-          } else {
+          if (!docs.length) {
+            // Was the last page already: undo the stack push and show the
+            // current page again instead of an empty table.
+            pagination.stack.pop();
+            const cur = await buildBaseQuery().startAt(pagination.firstDoc).limit(PAGE_SIZE).get();
+            renderPostsTable(cur.docs);
             pagination.hasNext = false;
+            pagination.hasPrev = pagination.stack.length > 0;
+            updatePaginationButtons();
+            return;
           }
+
+          renderPostsTable(docs);
+          pagination.firstDoc = docs[0];
+          pagination.lastDoc = docs[docs.length - 1];
+          pagination.hasNext = docs.length === PAGE_SIZE;
+          pagination.hasPrev = pagination.stack.length > 0;
 
           updatePaginationButtons();
         } catch (e) {
           console.error("Next page error:", e);
+          // keep the stack consistent if the query failed
+          if (pagination.stack.length && pagination.stack[pagination.stack.length - 1] === pagination.firstDoc) pagination.stack.pop();
           postsTableWrapper.innerHTML =
             "<p>Error loading next page.</p>";
         }
@@ -672,7 +682,8 @@
           const seenIds = new Set();
           let nextPage = null;
 
-          while (allArticles.length < totalNeeded) {
+          let pageGuard = 0; // never loop more than 10 API pages
+          while (allArticles.length < totalNeeded && pageGuard++ < 10) {
             const params = {
               apikey: NEWSDATA_API_KEY,
               language: "en"
@@ -686,7 +697,9 @@
 
             const res = await fetch(url);
             if (!res.ok) {
-              throw new Error("NewsData.io error " + res.status);
+              let msg = "";
+              try { const j = await res.json(); msg = j && j.results && j.results.message; } catch (e) {}
+              throw new Error("NewsData.io error " + res.status + (msg ? ": " + msg : ""));
             }
 
             const data = await res.json();
@@ -710,18 +723,38 @@
             return;
           }
 
+          // Stable doc id per article (hash of its id/link) so importing
+          // again never creates duplicates or resets likes/reports/labels.
+          const hash = (str) => {
+            let h = 5381;
+            for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+            return "news_" + h.toString(16);
+          };
+          const idOf = (a) => hash(String(a.article_id || a.link));
+          const ids = articles.map(idOf);
+          const existing = new Set();
+          for (let i = 0; i < ids.length; i += 10) { // Firestore 'in' limit = 10
+            const snap = await db.collection("posts")
+              .where(firebase.firestore.FieldPath.documentId(), "in", ids.slice(i, i + 10)).get();
+            snap.forEach((d) => existing.add(d.id));
+          }
+
           const batch = db.batch();
           const now = firebase.firestore.FieldValue.serverTimestamp();
+          let added = 0;
 
           articles.forEach((article) => {
-            const ref = db.collection("posts").doc();
+            const docId = idOf(article);
+            if (existing.has(docId)) return; // already imported
+            // Free NewsData plans return a placeholder instead of text.
+            const clean = (t) => (t && !/ONLY AVAILABLE IN/i.test(t) ? t : "");
+            const description =
+              clean(article.description) || clean(article.content) || clean(article.summary);
+            if (!description) return; // nothing readable to show
+            const ref = db.collection("posts").doc(docId);
+            added++;
 
             const title = article.title || "External news";
-            const description =
-              article.description ||
-              article.content ||
-              article.summary ||
-              "";
             const content = description.slice(0, 900);
 
             let published = now;
@@ -755,8 +788,12 @@
             });
           });
 
+          if (!added) {
+            alert("Nothing new to import (all fetched articles already exist or have no text).");
+            return;
+          }
           await batch.commit();
-          alert("Imported " + articles.length + " news items.");
+          alert("Imported " + added + " new news items (" + (articles.length - added) + " skipped).");
           resetPagination();
           loadPostsForAdmin();
         } catch (e) {

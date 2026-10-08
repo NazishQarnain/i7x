@@ -185,6 +185,8 @@
         // stored as (0,0) — that used to dump a pile of pins in the middle
         // of the ocean (Gulf of Guinea). Skip those instead of plotting them.
         if (lat === 0 && lng === 0) return;
+        // Posts an admin marked as misleading must not appear on the map.
+        if (data.adminLabel === "fake") return;
 
         const title = data.title || "Untitled News";
         const content = data.content || "";
@@ -195,7 +197,8 @@
         const hazardType = data.hazardType || null;
         const hazardMeta = hazardType ? HAZARD_TYPES[hazardType] : null;
 
-        allPosts.push({ id: doc.id, lat, lng, hazardType, title });
+        const createdMs = data.createdAt && data.createdAt.toMillis ? data.createdAt.toMillis() : null;
+        allPosts.push({ id: doc.id, lat, lng, hazardType, title, createdMs });
 
         const popupHtml = `
           <div>
@@ -359,6 +362,17 @@
       // Firestore. Used for Drive Mode's periodic refresh so a long
       // drive still picks up newly-reported hazards, without the reads
       // or the visual flicker of reloading the whole map.
+      // Drive Mode should not warn about a months-old accident or flood.
+      // Alerts expire per hazard type; map pins are unaffected.
+      const HAZARD_TTL_HOURS = {
+        accident: 12, flooding: 48, other_hazard: 168,
+        road_damage: 720, bridge_damage: 720
+      };
+      function isHazardFresh(p) {
+        if (!p.createdMs) return true; // unknown age: keep (safe side)
+        const ttl = HAZARD_TTL_HOURS[p.hazardType] || 168;
+        return Date.now() - p.createdMs <= ttl * 36e5;
+      }
       async function refreshDriveHazards() {
         try {
           const snap = await db
@@ -380,15 +394,17 @@
             const lat = data.location.latitude;
             const lng = data.location.longitude;
             if (lat === 0 && lng === 0) return;
+            if (data.adminLabel === "fake") return; // admin-flagged: never alert
             posts.push({
               id: doc.id,
               lat,
               lng,
               hazardType: data.hazardType,
-              title: data.title || "Untitled News"
+              title: data.title || "Untitled News",
+              createdMs: data.createdAt && data.createdAt.toMillis ? data.createdAt.toMillis() : null
             });
           });
-          driveHazardPosts = posts;
+          driveHazardPosts = posts.filter(isHazardFresh);
         } catch (e) {
           console.error("Error refreshing drive hazards:", e);
           // Keep whatever we already had rather than wiping the panel
@@ -575,7 +591,7 @@
         // Seed with hazards already loaded from the initial map load, so
         // the panel isn't empty for the first 60s while waiting on the
         // dedicated refresh below.
-        driveHazardPosts = allPosts.filter((p) => p.hazardType);
+        driveHazardPosts = allPosts.filter((p) => p.hazardType && isHazardFresh(p));
         refreshDriveHazards();
 
         if (driveModeBtn) {

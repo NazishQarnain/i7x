@@ -4,6 +4,37 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.5 — Robustness fixes
+
+- Fixed: the theme toggle crashed when browser storage is blocked (private
+  mode, some in-app browsers), stopping the rest of the menu/theme setup.
+  Storage access is now guarded.
+- Fixed: Explore tabs and buttons used light-mode borders in dark mode.
+
+## v1.10.4 — Map / Drive Mode safety and feed consistency
+
+- Fixed: posts an admin marked Fake still appeared as map pins and, worse,
+  triggered Drive Mode hazard alerts. They are now hidden from the map,
+  Drive Mode, the home Nearby feed and the Create-page nearby list.
+- Fixed: Drive Mode alerted about hazards of any age. Alerts now expire per
+  type (accident 12 h, flooding 48 h, other 7 days, road/bridge damage
+  30 days). Map pins are unchanged.
+- Fixed: imported posts with no real location (0,0) showed a distance of
+  thousands of km in the Create-page nearby list.
+
+## v1.10.3 — Admin import and pagination fixes
+
+- Fixed: "Import 60 random news" created duplicates on every run. Posts
+  now get a stable id per article, so already-imported ones are skipped
+  and their likes, reports and admin labels are never reset.
+- Fixed: free NewsData.io plans return a placeholder ("ONLY AVAILABLE IN
+  PAID PLANS") instead of text, which was being saved as the post body.
+  Those articles are now skipped.
+- Fixed: when the total post count was an exact multiple of the page size,
+  "Next" opened an empty page and broke Prev. It now stays on the last page.
+- Improved: import shows the API's real error message and never loops more
+  than 10 API pages; the result says how many were new vs skipped.
+
 ## v1.10.2 — Flat file layout
 
 - Changed: all files now sit in one folder (no sub-folders), so the whole

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- App version: 1.10.2 — see CHANGELOG.md for history -->
+<!-- App version: 1.10.5 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -273,7 +273,9 @@
             return;
           }
 
-          const docs = snap.docs;
+          // Admin-flagged misleading posts are hidden from the feed
+          // (still reachable by direct link, where they carry a warning).
+          const docs = snap.docs.filter((d) => d.data().adminLabel !== "fake");
 
           // Sort by distance if userLocation present
           let sortedDocs = docs;

@@ -1,7 +1,7 @@
 // App version — bump this + add an entry to CHANGELOG.md whenever a
 // meaningful set of changes ships, so it's always possible to tell which
 // version of the code is live just by opening the side menu.
-const APP_VERSION = "1.10.2";
+const APP_VERSION = "1.10.5";
 
 document.addEventListener("DOMContentLoaded", () => {
   const menuBtn = document.getElementById("menuToggle");
@@ -84,7 +84,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // initial from localStorage / prefers-color-scheme
-  const stored = localStorage.getItem(THEME_KEY);
+  // Bug fix: localStorage throws in private mode / when storage is blocked
+  // (some in-app browsers), which used to abort the whole theme setup.
+  const safeGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const stored = safeGet(THEME_KEY);
   if (stored === "dark" || stored === "light") {
     applyTheme(stored);
   } else {
@@ -99,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const nowDark = !document.body.classList.contains("dark");
       const newTheme = nowDark ? "dark" : "light";
       applyTheme(newTheme);
-      localStorage.setItem(THEME_KEY, newTheme);
+      safeSet(THEME_KEY, newTheme);
     });
   }
 });

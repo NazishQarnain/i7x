@@ -990,3 +990,8 @@ body.dark textarea:focus-visible {
 .cred-badge{display:inline-block;align-self:flex-start;margin:0 6px 6px 0;padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:600;color:#fff}
 .cred-low{background:#b91c1c}.cred-check{background:#b45309}
 .cred-reasons{margin:6px 0;padding-left:18px;font-size:.85rem;opacity:.85}
+
+/* Dark-mode borders for Explore tabs/buttons (v1.10.5) */
+body.dark .home-tab,
+body.dark .explore-btn{border-color:#334155}
+body.dark .home-tab.active{border-color:#2563eb}

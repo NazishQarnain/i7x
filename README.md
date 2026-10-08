@@ -1,6 +1,6 @@
 # i7x — Nearby News & Alert System
 
-**Current version: v1.10.2** · see [CHANGELOG.md](CHANGELOG.md)
+**Current version: v1.10.5** · see [CHANGELOG.md](CHANGELOG.md)
 
 A location-aware news and hazard-alert web app. People post local news (with photo and GPS location), browse what's happening near them, see it all on a live map, and get proximity alerts for road hazards while driving.
 
