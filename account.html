@@ -62,6 +62,14 @@
         </p>
         <div id="myPostsWrapper" style="margin-top:8px; font-size:13px;"></div>
       </section>
+
+      <section class="panel" style="margin-top:16px;">
+        <h3>Saved Posts</h3>
+        <p style="font-size:13px; color:#4b5563;">
+          Posts you saved with the 🔖 button (latest 20).
+        </p>
+        <div id="savedWrapper" style="margin-top:8px; font-size:13px;"></div>
+      </section>
     </main>
 
     <!-- Firebase v8 -->
@@ -162,12 +170,53 @@
                 await db.collection("posts").doc(id).delete();
                 const row = btn.closest("tr");
                 if (row) row.remove();
+                if (!myPostsWrapper.querySelector("tbody tr")) {
+                  myPostsWrapper.textContent = "No posts created yet.";
+                }
               } catch (err) {
                 console.error("Delete error:", err);
                 alert("Error deleting post: " + err.message);
               }
             });
           });
+        }
+
+        // Saved posts: one query for save ids, then one read per post
+        // (max 20). Posts deleted since saving are skipped.
+        async function loadSaved(user) {
+          const box = document.getElementById("savedWrapper");
+          if (!box) return;
+          if (!user) { box.textContent = "Please login to see saved posts."; return; }
+          box.textContent = "Loading...";
+          try {
+            const saves = await db.collection("users").doc(user.uid)
+              .collection("saves").orderBy("at", "desc").limit(20).get();
+            const posts = await Promise.all(saves.docs.map((s) =>
+              db.collection("posts").doc(s.id).get()));
+            box.textContent = "";
+            const live = posts.filter((p) => p.exists);
+            if (!live.length) { box.textContent = "No saved posts yet."; return; }
+            live.forEach((p) => {
+              const row = document.createElement("div");
+              row.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb";
+              const a = document.createElement("a");
+              a.href = "news.html?id=" + encodeURIComponent(p.id);
+              a.textContent = (p.data().title || "Untitled").substring(0, 70);
+              const rm = document.createElement("button");
+              rm.className = "small-btn"; rm.type = "button"; rm.textContent = "Remove";
+              rm.addEventListener("click", async () => {
+                try {
+                  await db.collection("users").doc(user.uid).collection("saves").doc(p.id).delete();
+                  row.remove();
+                  if (!box.firstChild) box.textContent = "No saved posts yet.";
+                } catch (e) { alert("Couldn't remove: " + e.message); }
+              });
+              row.append(a, rm); box.appendChild(row);
+            });
+          } catch (e) {
+            console.error("Saved load error:", e);
+            box.textContent = "Error loading saved posts.";
+          }
         }
 
         async function loadMyPosts(user) {
@@ -208,6 +257,7 @@
             infoBox.style.display = "none";
             if (logoutBtn) logoutBtn.style.display = "none";
             loadMyPosts(null);
+            loadSaved(null);
             return;
           }
 
@@ -218,6 +268,7 @@
           if (logoutBtn) logoutBtn.style.display = "block";
 
           loadMyPosts(user);
+          loadSaved(user);
         });
 
         if (logoutBtn) {

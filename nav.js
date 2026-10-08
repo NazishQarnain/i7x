@@ -1,7 +1,7 @@
 // App version — bump this + add an entry to CHANGELOG.md whenever a
 // meaningful set of changes ships, so it's always possible to tell which
 // version of the code is live just by opening the side menu.
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.10.2";
 
 document.addEventListener("DOMContentLoaded", () => {
   const menuBtn = document.getElementById("menuToggle");

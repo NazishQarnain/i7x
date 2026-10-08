@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- App version: 1.8.1 — see CHANGELOG.md for history -->
+<!-- App version: 1.10.2 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -45,6 +45,7 @@
         <div id="newsList" class="news-list"></div>
       </div>
       <div id="explorePane" style="display:none">
+        <button id="refreshExplore" class="explore-btn" type="button">🔄 Refresh</button>
         <h3 class="explore-heading">⚠️ Happening now</h3>
         <div id="urgentList" class="news-list"></div>
         <h3 class="explore-heading">✨ For you</h3>
@@ -57,6 +58,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="firebaseConfig.js"></script>
+    <script src="credibility.js"></script>
     <script src="explore.js"></script>
     <script src="nav.js"></script>
 
@@ -220,6 +222,9 @@
           card.appendChild(badge);
         }
 
+        const credBadge = Credibility.badge(data);
+        if (credBadge) card.appendChild(credBadge);
+
         const h3 = document.createElement("h3");
         h3.textContent = title;
         card.appendChild(h3);
@@ -354,6 +359,7 @@
 
       // ---------- Explore tab ----------
       let exploreLoaded = false;
+      let exploreDocs = null; // candidates cached for this page visit
       function fillExplore(listEl, docs, emptyMsg) {
         listEl.textContent = "";
         if (!docs.length) { listEl.textContent = emptyMsg; return; }
@@ -361,26 +367,38 @@
         docs.forEach((doc) => {
           const data = doc.data();
           const card = renderNewsCard(doc.id, data);
-          card.addEventListener("click", () => Explore.markSeen(doc.id));
           Explore.mountActions(card, db, doc.id, data, () => card.remove());
           frag.appendChild(card);
         });
         listEl.appendChild(frag);
       }
-      async function loadExplore() {
+      async function loadExplore(forceFetch) {
         const uEl = document.getElementById("urgentList"), fEl = document.getElementById("forYouList");
-        uEl.textContent = "Loading..."; fEl.textContent = "Loading...";
+        // Re-ranking (e.g. when GPS arrives) reuses the cached posts, so it
+        // costs no extra Firestore reads; only Refresh re-fetches.
+        if (!exploreDocs || forceFetch) {
+          uEl.textContent = "Loading..."; fEl.textContent = "";
+        }
         try {
-          const docs = await Explore.fetchCandidates(db);
-          const { urgent, forYou } = Explore.rank(docs, userLocation);
+          if (!exploreDocs || forceFetch) exploreDocs = await Explore.fetchCandidates(db);
+          if (!exploreDocs.length) {
+            uEl.textContent = "";
+            fEl.textContent = "No posts found yet. Create the first one from the Create tab!";
+            exploreLoaded = true;
+            return;
+          }
+          const { urgent, forYou } = Explore.rank(exploreDocs, userLocation);
           fillExplore(uEl, urgent, userLocation ? "No urgent hazards near you right now. 👍" : "Allow location access to see urgent hazards near you.");
-          fillExplore(fEl, forYou, "Nothing to show right now.");
+          fillExplore(fEl, forYou, "Nothing to show right now. Tap Refresh, or clear hidden posts by resetting site data.");
           exploreLoaded = true;
         } catch (e) {
           console.error("Explore load error:", e);
-          uEl.textContent = "Error loading Explore."; fEl.textContent = "";
+          exploreDocs = null;
+          uEl.textContent = "Couldn't load Explore: " + (e && e.message ? e.message : e);
+          fEl.textContent = "";
         }
       }
+
       function showTab(which) {
         const ex = which === "explore";
         document.getElementById("nearbyPane").style.display = ex ? "none" : "";
@@ -391,6 +409,7 @@
       }
       document.getElementById("tabNearby").addEventListener("click", () => showTab("nearby"));
       document.getElementById("tabExplore").addEventListener("click", () => showTab("explore"));
+      document.getElementById("refreshExplore").addEventListener("click", () => loadExplore(true));
 
       document.addEventListener("DOMContentLoaded", initHome);
     </script>

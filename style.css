@@ -985,3 +985,8 @@ body.dark textarea:focus-visible {
 .explore-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .explore-btn{padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:transparent;color:inherit;font-size:.8rem;cursor:pointer}
 .explore-btn:disabled{opacity:.5}
+
+/* ---- Credibility badges (v1.9.0) ---- */
+.cred-badge{display:inline-block;align-self:flex-start;margin:0 6px 6px 0;padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:600;color:#fff}
+.cred-low{background:#b91c1c}.cred-check{background:#b45309}
+.cred-reasons{margin:6px 0;padding-left:18px;font-size:.85rem;opacity:.85}

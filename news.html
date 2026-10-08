@@ -55,6 +55,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="firebaseConfig.js"></script>
+    <script src="credibility.js"></script>
     <script src="explore.js"></script>
 
     <!-- Navbar JS -->
@@ -115,9 +116,25 @@
           }
 
           const data = doc.data();
+          // Count an "open" for interest only the first time, so refreshing
+          // the page can't inflate a category's weight.
+          if (!Explore.wasSeen(id)) Explore.bump(data, "open");
           Explore.markSeen(id);
-          Explore.bump(data, "open");
+          // Wait for the optional ML model, but never longer than 1.5 s.
+          await Promise.race([Credibility.ready, new Promise((r) => setTimeout(r, 1500))]);
           if (actionsEl) Explore.mountActions(actionsEl, db, id, data, null);
+          const cred = Credibility.assess(data);
+          if (cred.level !== "ok" && actionsEl) {
+            const warn = document.createElement("div");
+            const b = Credibility.badge(data);
+            if (b) warn.appendChild(b);
+            if (cred.reasons.length) {
+              const ul = document.createElement("ul"); ul.className = "cred-reasons";
+              cred.reasons.forEach((t) => { const li = document.createElement("li"); li.textContent = t; ul.appendChild(li); });
+              warn.appendChild(ul);
+            }
+            actionsEl.parentNode.insertBefore(warn, actionsEl);
+          }
           const title = data.title || "Untitled News";
           const content = data.content || "";
           const meta = formatMeta(data);

@@ -59,15 +59,26 @@ service cloud.firestore {
         (
           request.resource.data.userId == request.auth.uid ||
           (isAdmin() && request.resource.data.userId == "system-news")
-        );
+        ) &&
+        // New posts cannot pre-set moderation/engagement fields.
+        (isAdmin() ||
+          !request.resource.data.keys().hasAny(["adminLabel", "likeCount", "reportCount"]));
 
       // Update/Delete: only the post's own author, or an admin.
       // Fixes the old rule, which let ANY logged-in user edit or delete
       // ANY other user's post (or the imported system-news posts —
       // those now can only be deleted by an admin, since no regular
       // user "owns" userId == "system-news").
-      allow update, delete: if isAdmin() ||
+      allow delete: if isAdmin() ||
         (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // Authors may edit their post but NOT adminLabel / likeCount /
+      // reportCount (otherwise an author could clear reports or mark their
+      // own post as admin-verified).
+      allow update: if isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid &&
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(["adminLabel", "likeCount", "reportCount"]));
 
       // Any signed-in user may change ONLY likeCount, by exactly +/-1, and
       // only together with creating/deleting their own like doc in the
@@ -83,6 +94,19 @@ service cloud.firestore {
             exists(/databases/$(database)/documents/users/$(request.auth.uid)/likes/$(postId)) &&
             !existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/likes/$(postId)))
         );
+
+      // reportCount: +1 only, together with the user's own report doc
+      // (so each user can report a post at most once).
+      allow update: if isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["reportCount"]) &&
+        request.resource.data.reportCount - resource.data.get("reportCount", 0) == 1 &&
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)/reports/$(postId)) &&
+        existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/reports/$(postId));
+    }
+
+    // Fake-news reports: create-only (cannot be withdrawn), private.
+    match /users/{uid}/reports/{postId} {
+      allow read, create: if isOwner(uid);
     }
 
     // Liked / saved posts: private to the user.

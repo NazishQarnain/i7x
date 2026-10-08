@@ -102,6 +102,23 @@
 
         <div id="postsTableWrapper" style="margin-top: 10px;"></div>
       </div>
+
+      <div id="reportedSection" class="section-card" style="display: none;">
+        <h3 style="margin-top: 0;">🚩 Most reported posts</h3>
+        <p class="muted">
+          Review user reports, mark posts Fake or Real, then export them as
+          training data for the fake-news model.
+        </p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <button class="small-btn" id="refreshReportedBtn">Refresh</button>
+          <button class="small-btn" id="exportTrainingBtn">Export training CSV</button>
+          <label class="muted" style="font-size: 13px;">
+            <input type="checkbox" id="includeImported" checked />
+            Include imported news as "real"
+          </label>
+        </div>
+        <div id="reportedList" style="margin-top: 10px;"></div>
+      </div>
     </div>
 
     <!-- Firebase scripts -->
@@ -488,6 +505,7 @@
           // the pagination buttons match what's actually on screen.
           resetPagination();
           loadPostsForAdmin();
+          loadReported();
         } catch (e) {
           console.error("Delete post error:", e);
           alert("Error deleting post.");
@@ -495,6 +513,75 @@
       }
 
       window.deletePost = deletePost;
+
+      // ---------- Reported posts + training-data export (v1.9.1) ----------
+      async function loadReported() {
+        const box = document.getElementById("reportedList");
+        box.textContent = "Loading...";
+        try {
+          const snap = await db.collection("posts")
+            .where("reportCount", ">", 0).orderBy("reportCount", "desc").limit(50).get();
+          box.textContent = "";
+          if (snap.empty) { box.textContent = "No reported posts."; return; }
+          snap.forEach((doc) => {
+            const d = doc.data();
+            const row = document.createElement("div");
+            row.style.cssText = "border:1px solid #cbd5e1;border-radius:8px;padding:8px;margin-bottom:8px";
+            const head = document.createElement("div");
+            head.style.fontWeight = "600";
+            head.textContent = `🚩 ${d.reportCount} · 👍 ${d.likeCount || 0} · ${d.title || "Untitled"}`;
+            const body = document.createElement("div");
+            body.style.cssText = "font-size:13px;margin:4px 0";
+            body.textContent = (d.content || "").slice(0, 200);
+            const label = document.createElement("div");
+            label.style.cssText = "font-size:12px;opacity:.8;margin-bottom:6px";
+            label.textContent = "Label: " + (d.adminLabel || "not set");
+            row.append(head, body, label);
+            const btn = (text, fn) => {
+              const b = document.createElement("button");
+              b.className = "small-btn"; b.type = "button"; b.textContent = text;
+              b.style.marginRight = "6px"; b.addEventListener("click", fn); row.appendChild(b);
+            };
+            const setLabel = async (v) => {
+              try { await db.collection("posts").doc(doc.id).update({ adminLabel: v }); label.textContent = "Label: " + v; }
+              catch (e) { alert("Couldn't save label: " + e.message); }
+            };
+            btn("Mark fake", () => setLabel("fake"));
+            btn("Mark real", () => setLabel("real"));
+            btn("Open", () => window.open("news.html?id=" + encodeURIComponent(doc.id), "_blank"));
+            btn("Delete", async () => {
+              await deletePost(doc.id); // confirms + refreshes lists
+            });
+            box.appendChild(row);
+          });
+        } catch (e) {
+          console.error("Reported load error:", e);
+          box.textContent = "Error loading reported posts: " + e.message;
+        }
+      }
+
+      const csvCell = (s) => '"' + String(s).replace(/"/g, '""').replace(/\r?\n/g, " ") + '"';
+      async function exportTrainingCsv() {
+        try {
+          const rows = [["text", "label"]];
+          const add = (snap, label) => snap.forEach((doc) => {
+            const d = doc.data();
+            const text = `${d.title || ""}. ${d.content || ""}`.trim();
+            if (text.length > 10) rows.push([text, label != null ? label : (d.adminLabel === "fake" ? 1 : 0)]);
+          });
+          add(await db.collection("posts").where("adminLabel", "in", ["fake", "real"]).limit(1000).get());
+          if (document.getElementById("includeImported").checked) {
+            add(await db.collection("posts").where("userId", "==", "system-news").limit(500).get(), 0);
+          }
+          if (rows.length < 2) { alert("No labelled posts yet. Mark some posts Fake or Real first."); return; }
+          const csv = rows.map((r) => r.map(csvCell).join(",")).join("\n");
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+          a.download = "fakenews_training.csv"; a.click();
+          URL.revokeObjectURL(a.href);
+          alert(`Exported ${rows.length - 1} rows. You need both fake (1) and real (0) examples to train.`);
+        } catch (e) { alert("Export failed: " + e.message); }
+      }
 
       async function checkAdminAndLoad(user) {
         if (!user) {
@@ -536,6 +623,8 @@
 
           resetPagination();
           loadPostsForAdmin();
+          document.getElementById("reportedSection").style.display = "block";
+          loadReported();
         } catch (e) {
           console.error("Admin check error:", e);
           adminStatusEl.textContent =
@@ -691,6 +780,9 @@
             });
           });
         }
+
+        document.getElementById("refreshReportedBtn").addEventListener("click", () => { if (isAdmin) loadReported(); });
+        document.getElementById("exportTrainingBtn").addEventListener("click", () => { if (isAdmin) exportTrainingCsv(); });
 
         if (importRandomNewsBtn) {
           importRandomNewsBtn.addEventListener("click", () => {

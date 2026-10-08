@@ -1,6 +1,6 @@
 # i7x — Nearby News & Alert System
 
-**Current version: v1.8.1** · see [CHANGELOG.md](CHANGELOG.md)
+**Current version: v1.10.2** · see [CHANGELOG.md](CHANGELOG.md)
 
 A location-aware news and hazard-alert web app. People post local news (with photo and GPS location), browse what's happening near them, see it all on a live map, and get proximity alerts for road hazards while driving.
 
@@ -14,10 +14,22 @@ Built with plain HTML, CSS and JavaScript on top of Firebase. No build step, no 
 - Home feed of the latest posts, sorted nearest-first with distance shown in km/m
 - "Load nearby news" list on the app page, also sorted nearest-first
 - Post detail page with an "Open in Google Maps" link
-- Account page with your profile and **My Posts** (open or delete your own)
+- Account page with your profile, **My Posts** (open or delete your own) and **Saved Posts**
 
 ### Explore (recommender)
 Home has **Nearby** and **Explore** tabs. Explore shows "⚠️ Happening now" (urgent hazards near you) and "✨ For you" (ranked by `0.4·urgency + 0.3·interest + 0.15·popularity + 0.15·freshness − already_seen`). Like, Save and Not interested feed your interest profile (kept in localStorage). Logic lives in `explore.js`.
+
+### Credibility checks
+Posts are scored on text heuristics, an optional ML model and community reports, and shown with 🔎 "Check source" or 🚩 "Unverified" badges. This flags posts that need verification; it does not prove anything true or false.
+
+To enable the ML part, train it on a labelled CSV (`text,label`, 1 = fake/misleading) and copy the output next to `index.html`:
+
+```
+pip install scikit-learn pandas
+python train_fakenews_model.py data.csv fakenews_model.json
+```
+
+Public fake-news datasets are mostly national/political news, so for local hazard reports the best training data is your own reported posts. Without the model file, heuristics and reports still work.
 
 ### Post types and hazards
 Each post can be tagged as: General News, Road Damage, Bridge Damage/Closed, Accident, Flooding, or Other Hazard. Hazard posts get a colored badge in every list and a distinct map pin (🚧 🌉 🚗 🌊 ⚠️).
@@ -31,6 +43,7 @@ Each post can be tagged as: General News, Road Damage, Bridge Damage/Closed, Acc
 ### Admin panel
 - Restricted to accounts with `role: "admin"` in their `/users/{uid}` document
 - Paginated post list with date-range filter and delete
+- "Most reported posts" list: mark posts Fake/Real and export a `text,label` CSV for model training
 - One-click import of 60 latest headlines from NewsData.io (external links only, stored as `system-news` posts)
 
 ### UI
@@ -58,6 +71,8 @@ map.html          Live map + Drive Mode
 account.html      Profile and My Posts
 login.html        Login / sign-up
 admin.html        Admin panel (filter, delete, NewsData.io import)
+credibility.js    Credibility scoring (heuristics + optional ML + reports)
+train_fakenews_model.py  Trains the optional fake-news model (run on your computer)
 explore.js        Explore scoring, likes/saves, interest profile
 app.js            Core logic: auth, post creation, ImgBB upload, nearby list
 nav.js            Side menu, theme toggle, version label (APP_VERSION)
@@ -93,7 +108,7 @@ The client-side admin check and these rules both use the same condition (`role =
    - Paste your web app config into `firebaseConfig.js`.
    - Deploy `firestore.rules` (Firebase console → Firestore → Rules, or `firebase deploy --only firestore:rules`).
 3. **Firestore index**: the admin date filter and hazard query combine ordering and filters, so Firestore may ask you to create a composite index. Open the link it prints in the browser console.
-4. **API keys** (both are optional; features degrade gracefully if unset)
+4. **API keys** (both optional; the features are simply off if unset)
    - ImgBB: set `IMGBB_API_KEY` in `app.js` for image uploads.
    - NewsData.io: set `NEWSDATA_API_KEY` in `admin.html` for the headline import.
 5. **Make yourself admin**: sign up in the app, then in the Firestore console set `role: "admin"` on your `/users/{uid}` document.
@@ -102,7 +117,7 @@ The client-side admin check and these rules both use the same condition (`role =
 ## Security notes
 
 - Firebase web config values are designed to be public, but restrict your API key by HTTP referrer in the Google Cloud console and rely on the Firestore rules for protection.
-- The ImgBB and NewsData.io keys are currently in client-side code, so anyone can read them. Treat them as low-privilege keys, restrict or rotate them if abused, and consider moving those calls behind a small backend (e.g. a Cloud Function) later.
+- The ImgBB and NewsData.io keys are in client-side code, so anyone can read them. Fine for testing; before going public, rotate them and consider moving those calls behind a small backend. Treat them as low-privilege keys, restrict or rotate them if abused, and consider moving those calls behind a small backend (e.g. a Cloud Function) later.
 - Post text is rendered with safe DOM construction or HTML-escaping, not raw `innerHTML`.
 
 ## Versioning

@@ -4,6 +4,78 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.2 — Flat file layout
+
+- Changed: all files now sit in one folder (no sub-folders), so the whole
+  project can be uploaded to GitHub in one drag-and-drop. The training
+  script moved from `ml/train_fakenews_model.py` to `train_fakenews_model.py`.
+
+## v1.10.1 — Explore showed nothing
+
+- Fixed: Explore only looked at posts from the last 7 days, so it came
+  back empty whenever the newest posts were older (imported or test data).
+  It now ranks the latest 100 posts; age is handled by the score itself.
+- Fixed: load errors were hidden behind a generic message. The real error
+  text is now shown, and an empty database shows a clear message.
+- Added: 🔄 Refresh button on Explore.
+- Optimized: Explore keeps its posts in memory for the page visit, so
+  re-ranking when GPS arrives or switching tabs costs no extra reads.
+
+## v1.10.0 — Saved posts page, interest and performance fixes
+
+- Added: **Saved Posts** section on the Account page (latest 20, with
+  Remove). Saving existed but there was nowhere to view saved posts.
+- Fixed: refreshing a post page inflated that category's interest weight;
+  an "open" now counts only the first time.
+- Fixed: Explore card handlers were never cleaned up when cards were
+  removed ("Not interested"), leaking memory and extra work on login/logout.
+- Fixed: deleting your last post on the Account page left an empty table
+  instead of the "No posts" message.
+- Optimized: the post page no longer waits indefinitely for the optional
+  ML model (max 1.5 s), so a slow or missing model file cannot delay it.
+
+## v1.9.2 — Admin review badge + moderation hardening
+
+- Added: posts an admin marked Fake show "🚫 Reviewed: likely misleading"
+  on cards and the post page, are removed from Explore, and never appear in
+  "Happening now". Posts marked Real are never flagged by automated checks.
+- Fixed: Explore never applied the credibility penalty because it looked
+  for `window.Credibility`, and a top-level `const` is not a window
+  property. It now uses a `typeof` check.
+- Fixed (security): authors could edit `reportCount`, `likeCount` or
+  `adminLabel` on their own posts (clear reports, self-verify). Rules now
+  block that, and new posts cannot pre-set those fields.
+  **Redeploy `firestore.rules`.**
+
+## v1.9.1 — Admin: reported posts and training-data export
+
+- Added: admin "🚩 Most reported posts" section (top 50 by report count)
+  with Mark fake / Mark real / Open / Delete. Labels are saved as
+  `adminLabel` on the post.
+- Added: "Export training CSV" downloads `text,label` rows (fake = 1,
+  real = 0) for `ml/train_fakenews_model.py`. Optionally adds imported
+  news as "real" examples to balance the data.
+- No rules change; admins can already update any post.
+
+## v1.9.0 — Credibility checks (fake-news detection)
+
+- Added: every post gets a credibility assessment from three signals:
+  text heuristics (all caps, "!!!", clickbait/chain-message wording, links,
+  very short text, hazard without a location), an optional ML text model,
+  and community reports.
+- Added: 🔎 "Check source" / 🚩 "Unverified" badges on feed cards and the
+  post page (with the reasons listed on the post page).
+- Added: 🚩 Report button (once per user per post, cannot be withdrawn).
+  Stored as `reportCount` plus `users/{uid}/reports/{postId}`.
+- Added: doubtful posts are ranked lower in Explore.
+- Added: `ml/train_fakenews_model.py` trains a TF-IDF + logistic regression
+  model from your own labelled CSV and exports `fakenews_model.json`, which
+  `credibility.js` runs in the browser (no server). Without that file the
+  app uses heuristics + reports only. No trained model is bundled.
+- Rules: `reportCount` may only go up by 1 together with the user's own
+  report doc. **Redeploy `firestore.rules`.**
+- Posts are flagged as needing verification, never labelled "fake".
+
 ## v1.8.1 — Explore bug fixes and optimization
 
 - Fixed: likes were only "one per user" by client convention. Rules now
@@ -26,7 +98,7 @@ side menu — bottom of the list).
 ## v1.8.0 — Explore (recommender)
 
 - Added: home page now has **Nearby** and **Explore** tabs.
-- Explore ranks the last 7 days of posts with
+- Explore ranks the latest 100 posts with
   `score = 0.4·urgency + 0.3·interest + 0.15·popularity + 0.15·freshness − already_seen`.
   - "⚠️ Happening now": top 5 hazards by severity × proximity (2–15 km) × recency (24 h).
   - "✨ For you": everything else by score.
