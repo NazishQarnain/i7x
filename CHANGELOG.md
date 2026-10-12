@@ -4,6 +4,35 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.8 — Stronger heuristics
+
+- Changed: without an ML model, text heuristics now count more
+  (`0.75·heuristics + 0.5·reports`), so a clearly spammy post reaches
+  🚩 "Unverified" on its own instead of stopping at "Check source".
+- Added: Hinglish and Hindi chain-message phrases ("forward karo",
+  "sabko bhejo", "delete hone se pehle", "फॉरवर्ड", "शेयर करो" ...).
+  One phrase scores 0.35, two or more 0.5.
+- Changed: a hazard report with a real GPS location (e.g. "ACCIDENT!!!
+  AVOID ROAD") is no longer penalised heavily for capital letters and
+  exclamation marks (0.1 / 0.05 instead of 0.3 / 0.15).
+- Known trade-off: a single clickbait word in an honest post (e.g. "a
+  shocking increase in complaints") now shows "Check source".
+
+## v1.10.7 — Training export fix
+
+- Fixed: "Export training CSV" listed a post twice with conflicting labels
+  when an imported news item was also marked Fake or Real by an admin
+  (once with the admin label, once as "real"). Each post is now exported
+  once and the admin's label wins.
+
+## v1.10.6 — Training script handles small datasets
+
+- Fixed: `train_fakenews_model.py` crashed with cryptic scikit-learn errors
+  on small or one-sided data. It now prints rows per label, stops with a
+  clear message if only one label is present, warns when data is very
+  small, and trains on everything (no test split) when there are fewer than
+  5 examples of a label.
+
 ## v1.10.5 — Robustness fixes
 
 - Fixed: the theme toggle crashed when browser storage is blocked (private

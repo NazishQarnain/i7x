@@ -574,7 +574,13 @@
       async function exportTrainingCsv() {
         try {
           const rows = [["text", "label"]];
+          // Bug fix: an imported post that an admin also labelled was exported
+          // twice (e.g. as fake AND as real). Each post now appears once and
+          // the admin's label wins (the labelled query runs first).
+          const seenIds = new Set();
           const add = (snap, label) => snap.forEach((doc) => {
+            if (seenIds.has(doc.id)) return;
+            seenIds.add(doc.id);
             const d = doc.data();
             const text = `${d.title || ""}. ${d.content || ""}`.trim();
             if (text.length > 10) rows.push([text, label != null ? label : (d.adminLabel === "fake" ? 1 : 0)]);

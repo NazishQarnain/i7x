@@ -4,7 +4,14 @@
 // it cannot prove a post is true or false.
 const Credibility = (() => {
   let model = null;
-  const CLICKBAIT = /(shocking|you won't believe|you wont believe|forward this|share before|before it'?s deleted|100% (true|confirmed)|breaking!!|they don'?t want you)/i;
+  // Chain-message / clickbait phrases: English, Hinglish and Hindi (Devanagari).
+  const CLICKBAIT = new RegExp([
+    "shocking", "you won'?t believe", "forward this", "forward (it )?to (all|everyone)",
+    "share before", "before it'?s deleted", "100% (true|confirmed)", "they don'?t want you",
+    "forward kar(o|do| do)", "sabko (forward|bhejo|bhej do)", "bhej do sabko", "aage bhejo",
+    "jaldi share", "share kar(o|do| do)", "delete hone se pehle", "viral kar(o|do| do)",
+    "फॉरवर्ड", "शेयर कर(ो|ें)", "सबको भेज(ो|ें)", "डिलीट होने से पहले"
+  ].join("|"), "gi");
   const tokenize = (t) => (String(t).toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) || []);
 
   const ready = fetch("fakenews_model.json")
@@ -28,17 +35,30 @@ const Credibility = (() => {
     return 1 / (1 + Math.exp(-z));
   }
 
+  function hasValidLocation(p) {
+    const l = p.location;
+    return !!(l && typeof l.latitude === "number" && !(l.latitude === 0 && l.longitude === 0));
+  }
+
   function heuristics(p) {
     const text = `${p.title || ""} ${p.content || ""}`;
     const letters = text.replace(/[^A-Za-z]/g, "");
     const reasons = []; let r = 0;
-    if (letters.length >= 10 && letters.replace(/[^A-Z]/g, "").length / letters.length > 0.5) { r += 0.3; reasons.push("Mostly capital letters"); }
-    if ((text.match(/!/g) || []).length >= 3) { r += 0.15; reasons.push("Excessive exclamation marks"); }
-    if (CLICKBAIT.test(text)) { r += 0.3; reasons.push("Clickbait / chain-message wording"); }
+    // A real emergency report (hazard type + real GPS location) is often
+    // typed in capitals with "!" ("ACCIDENT!!! AVOID ROAD"), so shouting
+    // counts for much less there. Chain-message phrases still count fully.
+    const emergency = !!p.hazardType && hasValidLocation(p);
+    if (letters.length >= 10 && letters.replace(/[^A-Z]/g, "").length / letters.length > 0.5) {
+      r += emergency ? 0.1 : 0.3; reasons.push("Mostly capital letters");
+    }
+    if ((text.match(/!/g) || []).length >= 3) {
+      r += emergency ? 0.05 : 0.15; reasons.push("Excessive exclamation marks");
+    }
+    const hits = new Set((text.match(CLICKBAIT) || []).map((m) => m.toLowerCase()));
+    if (hits.size) { r += hits.size >= 2 ? 0.5 : 0.35; reasons.push("Clickbait / chain-message wording"); }
     if (/https?:\/\//i.test(text)) { r += 0.1; reasons.push("Contains external link"); }
     if ((p.content || "").trim().length < 30) { r += 0.15; reasons.push("Very short details"); }
-    const l = p.location;
-    if (p.hazardType && (!l || (l.latitude === 0 && l.longitude === 0))) { r += 0.2; reasons.push("Hazard report without a valid location"); }
+    if (p.hazardType && !hasValidLocation(p)) { r += 0.2; reasons.push("Hazard report without a valid location"); }
     return { risk: Math.min(1, r), reasons };
   }
 
@@ -53,7 +73,7 @@ const Credibility = (() => {
     const reports = p.reportCount || 0, likes = p.likeCount || 0;
     const comm = Math.min(1, Math.max(0, (reports - 0.5 * likes) / 3));
     if (reports >= 2) reasons.push(`${reports} users reported this post`);
-    let risk = ml !== null ? 0.35 * h.risk + 0.35 * ml + 0.3 * comm : 0.5 * h.risk + 0.5 * comm;
+    let risk = ml !== null ? 0.35 * h.risk + 0.35 * ml + 0.3 * comm : Math.min(1, 0.75 * h.risk + 0.5 * comm);
     if (p.userId === "system-news") risk *= 0.5; // imported from a news API
     const level = risk >= 0.5 ? "low" : risk >= 0.25 ? "check" : "ok";
     return { risk, level, reasons, ml };
