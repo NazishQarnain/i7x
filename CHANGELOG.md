@@ -4,6 +4,18 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.10 — Login page
+
+- Fixed: while logged in the page still showed the email/password fields
+  under a "Login / Signup" title. It now shows "You're logged in" with
+  quick links (Home, Create news, Account) and Logout.
+- Fixed: pressing Enter tried to log in even when the form was hidden.
+- Added: **Forgot password?** (sends a Firebase reset email).
+- Added: show / hide password button.
+- Changed: errors are shown on the page in plain language (wrong password,
+  email already in use, weak password, too many attempts...) instead of
+  raw Firebase messages in pop-ups.
+
 ## v1.10.9 — Label any post as Fake or Real
 
 - Added: the main admin posts table now has **Mark fake / Mark real /
