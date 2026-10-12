@@ -1002,3 +1002,6 @@ body.dark .home-tab.active{border-color:#2563eb}
 .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:0;cursor:pointer;font-size:1rem;padding:6px}
 #loggedInBox .btn-row a{text-decoration:none}
 #forgotLink{font-size:.85rem}
+
+/* ---- Create / Nearby list (v1.10.12) ---- */
+.news-image{max-height:260px;object-fit:cover;border-radius:8px}

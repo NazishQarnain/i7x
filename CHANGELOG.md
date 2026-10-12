@@ -4,6 +4,17 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.12 — Create / Nearby page
+
+- Fixed: the Account card still showed empty Email/Password boxes while
+  logged in; they are now hidden.
+- Fixed: the nearby list had no credibility badge, so a spam post looked
+  normal there while the home feed flagged it.
+- Fixed: distances read "0 km (2 m) away". They now read "2 m away" under
+  1 km and "1.4 km away" above. Posts with no real location show none.
+- Improved: list items have a bold title, a grey location/distance line,
+  a "Read more" link, and images are capped in height.
+
 ## v1.10.11 — Account page
 
 - Added: My Posts now shows each post's status (🚩 Unverified / 🔎 Check

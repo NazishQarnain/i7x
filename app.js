@@ -1,5 +1,5 @@
 // Nearby News & Alert System - Optimized app.js with image compression + reverse geocoding
-// App version: 1.10.11 — see CHANGELOG.md for history
+// App version: 1.10.12 — see CHANGELOG.md for history
 
 document.addEventListener("DOMContentLoaded", () => {
   const $ = (id) => document.getElementById(id);
@@ -76,7 +76,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (
       !loc ||
       typeof loc.latitude !== "number" ||
-      typeof loc.longitude !== "number"
+      typeof loc.longitude !== "number" ||
+      (loc.latitude === 0 && loc.longitude === 0)
     ) {
       return "";
     }
@@ -86,11 +87,10 @@ document.addEventListener("DOMContentLoaded", () => {
       loc.latitude,
       loc.longitude
     );
-    const roundedKm = Math.round(distKm * 10) / 10;
-    const distM = Math.round(distKm * 1000);
-
-    // Hamesha km + meters
-    return `${roundedKm} km (${distM} m) away`;
+    // Readable units: "2 m away" under 1 km, "1.4 km away" above
+    // (it used to say "0 km (2 m) away").
+    if (distKm < 1) return `${Math.round(distKm * 1000)} m away`;
+    return `${Math.round(distKm * 10) / 10} km away`;
   }
 
   function setAuthUI(user) {
@@ -99,11 +99,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (user) {
       userInfo.textContent = "Logged in as " + (user.email || "unknown");
+      // Bug fix: empty Email/Password boxes stayed visible while logged in.
+      if (emailInput) emailInput.style.display = "none";
+      if (passwordInput) passwordInput.style.display = "none";
       signupBtn.style.display = "none";
       loginBtn.style.display = "none";
       logoutBtn.style.display = "inline-block";
     } else {
       userInfo.textContent = "Not logged in.";
+      if (emailInput) emailInput.style.display = "";
+      if (passwordInput) passwordInput.style.display = "";
       signupBtn.style.display = "inline-block";
       loginBtn.style.display = "inline-block";
       logoutBtn.style.display = "none";
@@ -410,7 +415,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------- LOAD NEARBY ----------
-  function renderPostItem(data, distanceText) {
+  function renderPostItem(data, distanceText, id) {
     const li = document.createElement("li");
     const title = data.title || "No title";
     const content = data.content || "";
@@ -433,11 +438,34 @@ document.addEventListener("DOMContentLoaded", () => {
       li.appendChild(document.createElement("br"));
     }
 
-    let line = `${title} - ${fullContent}`;
-    if (distanceText) line += ` (${distanceText})`;
-    if (address) line += ` • ${address}`;
+    // Same credibility badge as the home feed (this list had none, so a
+    // spam post looked identical to a normal one here).
+    if (typeof Credibility !== "undefined") {
+      const cb = Credibility.badge(data);
+      if (cb) { li.appendChild(cb); li.appendChild(document.createElement("br")); }
+    }
 
-    li.appendChild(document.createTextNode(line));
+    const strong = document.createElement("strong");
+    strong.textContent = title;
+    li.appendChild(strong);
+    if (fullContent) li.appendChild(document.createTextNode(" - " + fullContent));
+
+    const meta = [];
+    if (distanceText) meta.push(distanceText);
+    if (address) meta.push(address);
+    if (meta.length) {
+      const m = document.createElement("div");
+      m.style.cssText = "font-size:12px;color:#6b7280;margin-top:2px";
+      m.textContent = meta.join(" • ");
+      li.appendChild(m);
+    }
+    if (id) {
+      const a = document.createElement("a");
+      a.href = "news.html?id=" + encodeURIComponent(id);
+      a.textContent = "Read more";
+      a.style.cssText = "font-size:13px";
+      li.appendChild(a);
+    }
 
     if (data.imageUrl) {
       const img = document.createElement("img");
@@ -506,17 +534,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 data.location.longitude
               );
             }
-            return { data, dKm };
+            return { data, dKm, id: doc.id };
           });
           withDistance.sort((a, b) => a.dKm - b.dKm);
 
-          withDistance.forEach(({ data }) => {
+          withDistance.forEach(({ data, id }) => {
             const distanceText = formatDistance(
               userLat,
               userLng,
               data.location
             );
-            const li = renderPostItem(data, distanceText);
+            const li = renderPostItem(data, distanceText, id);
             newsList.appendChild(li);
           });
         } catch (e) {
