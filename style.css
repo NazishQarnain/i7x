@@ -280,6 +280,9 @@ button.full-width {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
   margin-top: 12px;
+  /* cards keep their own height instead of stretching to the tallest
+     card in the row (that left big empty white blocks) */
+  align-items: start;
 }
 
 .news-card {

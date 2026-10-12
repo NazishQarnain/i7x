@@ -4,6 +4,13 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.13 — Home feed polish
+
+- Fixed: distances on feed cards read "0 km (6 m)" and "1193.5 km
+  (1193455 m)". They now read "6 m", "1.4 km" and "1194 km".
+- Fixed: cards stretched to the height of the tallest card in their row,
+  leaving large empty white areas under short posts.
+
 ## v1.10.12 — Create / Nearby page
 
 - Fixed: the Account card still showed empty Email/Password boxes while
