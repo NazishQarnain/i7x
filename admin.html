@@ -97,7 +97,7 @@
         </p>
 
         <p class="muted">
-          Latest posts across the platform (including external news). You can review and delete content here.
+          Latest posts across the platform (including external news). You can review, label (Fake / Real) and delete content here. Labels feed the fake-news training export.
         </p>
 
         <div id="postsTableWrapper" style="margin-top: 10px;"></div>
@@ -358,9 +358,15 @@
               <td>${escapeHtml(sourceText)}</td>
               <td>${isExternalBadge}</td>
               <td>
-                <button class="small-btn" data-delete-id="${doc.id}">
-                  Delete
-                </button>
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+                  <span class="muted" style="font-size:12px" data-label-text="${doc.id}">Label: ${escapeHtml(data.adminLabel || "not set")}</span>
+                  <button class="small-btn" data-label-id="${doc.id}" data-label="fake">Mark fake</button>
+                  <button class="small-btn" data-label-id="${doc.id}" data-label="real">Mark real</button>
+                  <button class="small-btn" data-label-id="${doc.id}" data-label="clear">Clear label</button>
+                  <button class="small-btn" data-delete-id="${doc.id}">
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           `;
@@ -384,6 +390,21 @@
             <tbody>${rowsHtml}</tbody>
           </table>
         `;
+
+        // Fake / Real / Clear labels for ANY post (not only reported ones).
+        postsTableWrapper.querySelectorAll("[data-label-id]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-label-id");
+            const v = btn.getAttribute("data-label");
+            try {
+              await db.collection("posts").doc(id).update({
+                adminLabel: v === "clear" ? firebase.firestore.FieldValue.delete() : v
+              });
+              const t = postsTableWrapper.querySelector('[data-label-text="' + id + '"]');
+              if (t) t.textContent = "Label: " + (v === "clear" ? "not set" : v);
+            } catch (e) { alert("Couldn't save label: " + e.message); }
+          });
+        });
 
         // Delegate delete clicks via data-attribute instead of inline
         // onclick="deletePost('...')" — safer, and avoids ever building
@@ -558,6 +579,12 @@
             };
             btn("Mark fake", () => setLabel("fake"));
             btn("Mark real", () => setLabel("real"));
+            btn("Clear label", async () => {
+              try {
+                await db.collection("posts").doc(doc.id).update({ adminLabel: firebase.firestore.FieldValue.delete() });
+                label.textContent = "Label: not set";
+              } catch (e) { alert("Couldn't clear label: " + e.message); }
+            });
             btn("Open", () => window.open("news.html?id=" + encodeURIComponent(doc.id), "_blank"));
             btn("Delete", async () => {
               await deletePost(doc.id); // confirms + refreshes lists

@@ -4,6 +4,14 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.9 — Label any post as Fake or Real
+
+- Added: the main admin posts table now has **Mark fake / Mark real /
+  Clear label** on every post (not only reported ones), with the current
+  label shown. This is how you build training data from your own posts.
+- Added: **Clear label** in "Most reported posts" to undo a wrong label.
+- No rules change; admins can already update any post.
+
 ## v1.10.8 — Stronger heuristics
 
 - Changed: without an ML model, text heuristics now count more
