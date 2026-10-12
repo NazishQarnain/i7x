@@ -79,6 +79,7 @@
     <script src="firebaseConfig.js"></script>
 
     <!-- Navbar JS -->
+    <script src="credibility.js"></script>
     <script src="nav.js" defer></script>
 
     <script>
@@ -112,7 +113,10 @@
 
           docs.forEach((doc) => {
             const data = doc.data();
-            const title = (data.title || "Untitled").substring(0, 60);
+            const fullTitle = data.title || "Untitled";
+            // Bug fix: titles were cut at 60 chars with no "..." so they
+            // looked complete when they were not.
+            const title = fullTitle.length > 60 ? fullTitle.substring(0, 60).trimEnd() + "..." : fullTitle;
             const created =
               data.createdAt && data.createdAt.toDate
                 ? data.createdAt.toDate().toLocaleString("en-IN")
@@ -123,6 +127,25 @@
 
             const titleTd = document.createElement("td");
             titleTd.textContent = title;
+
+            // Enhancement: show how the system sees each post, so you know
+            // why it may be flagged or missing from feeds.
+            const meta = document.createElement("div");
+            meta.style.cssText = "margin-top:4px;font-size:12px;color:#6b7280";
+            if (typeof Credibility !== "undefined") {
+              const b = Credibility.badge(data);
+              if (b) meta.appendChild(b);
+            }
+            const stats = document.createElement("span");
+            stats.textContent = "👍 " + (data.likeCount || 0) + " · 🚩 " + (data.reportCount || 0);
+            meta.appendChild(stats);
+            if (data.adminLabel === "fake") {
+              const note = document.createElement("div");
+              note.style.color = "#b91c1c";
+              note.textContent = "Hidden from feeds after admin review.";
+              meta.appendChild(note);
+            }
+            titleTd.appendChild(meta);
             tr.appendChild(titleTd);
 
             const createdTd = document.createElement("td");
@@ -201,7 +224,8 @@
               row.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb";
               const a = document.createElement("a");
               a.href = "news.html?id=" + encodeURIComponent(p.id);
-              a.textContent = (p.data().title || "Untitled").substring(0, 70);
+              const st = p.data().title || "Untitled";
+              a.textContent = st.length > 70 ? st.substring(0, 70).trimEnd() + "..." : st;
               const rm = document.createElement("button");
               rm.className = "small-btn"; rm.type = "button"; rm.textContent = "Remove";
               rm.addEventListener("click", async () => {
@@ -252,6 +276,7 @@
           if (!statusEl || !infoBox) return;
 
           if (!user) {
+            statusEl.style.display = "";
             statusEl.textContent =
               "Not logged in. Please use Login / Signup page.";
             infoBox.style.display = "none";
@@ -261,7 +286,8 @@
             return;
           }
 
-          statusEl.textContent = "Logged in as " + (user.email || "unknown");
+          // Bug fix: "Logged in as <email>" repeated the Email row below it.
+          statusEl.style.display = "none";
           infoBox.style.display = "block";
           if (emailEl) emailEl.textContent = user.email || "";
           if (uidEl) uidEl.textContent = user.uid || "";

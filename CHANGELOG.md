@@ -4,6 +4,15 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.10.11 — Account page
+
+- Added: My Posts now shows each post's status (🚩 Unverified / 🔎 Check
+  source / 🚫 Reviewed: likely misleading), its likes and reports, and a
+  note when an admin review has hidden it from feeds.
+- Fixed: long titles in My Posts and Saved Posts were cut without "...".
+- Fixed: the profile showed "Logged in as <email>" and then the same email
+  again in the Email row; the duplicate line is gone.
+
 ## v1.10.10 — Login page
 
 - Fixed: while logged in the page still showed the email/password fields
