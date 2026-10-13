@@ -1,6 +1,6 @@
 # i7x — Nearby News & Alert System
 
-**Current version: v1.10.13** · see [CHANGELOG.md](CHANGELOG.md)
+**Current version: v1.11.2** · see [CHANGELOG.md](CHANGELOG.md)
 
 A location-aware news and hazard-alert web app. People post local news (with photo and GPS location), browse what's happening near them, see it all on a live map, and get proximity alerts for road hazards while driving.
 
@@ -71,6 +71,7 @@ map.html          Live map + Drive Mode
 account.html      Profile and My Posts
 login.html        Login / sign-up
 admin.html        Admin panel (filter, delete, NewsData.io import)
+geohash.js        Geohash helper for "posts near me" queries
 credibility.js    Credibility scoring (heuristics + optional ML + reports)
 train_fakenews_model.py  Trains the optional fake-news model (run on your computer)
 explore.js        Explore scoring, likes/saves, interest profile
@@ -86,7 +87,17 @@ CHANGELOG.md      Version history
 
 **`/posts/{postId}`**: `title`, `content`, `userId`, `location` (GeoPoint), `address`, `imageUrl` (nullable), `hazardType` (nullable), `createdAt`. Imported posts use `userId: "system-news"`.
 
+**`/users/{uid}/prefs/interest`**: `weights` (category to number) and `updatedMs`; the synced Explore interest profile.
+
 **`/users/{uid}`**: profile data plus an optional `role`. Only `role == "admin"` is recognized.
+
+## Firebase checklist
+
+1. Authentication: enable Email/Password, and add your hosting domain (e.g. `username.github.io`) under Settings, Authorized domains.
+2. Firestore: create the database and publish `firestore.rules` (Rules tab). Publish it again after every version that changes it.
+3. Indexes: none needed by hand. If the console ever prints an index link, open it once.
+4. After upgrading to v1.11.0, log in as admin and press **Add location index to old posts** once.
+5. Make yourself admin by setting `role: "admin"` on your `/users/{uid}` document.
 
 ## Security rules
 

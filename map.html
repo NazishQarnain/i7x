@@ -113,6 +113,19 @@
       const markerCluster = L.markerClusterGroup({ chunkedLoading: true });
       map.addLayer(markerCluster);
 
+      // Blue "you are here" dot. Created once, moved on every GPS fix
+      // (also used by Drive Mode, which had no position marker at all).
+      let youDot = null, youRing = null;
+      function showYou(lat, lng, accuracy) {
+        if (!youDot) {
+          youRing = L.circle([lat, lng], { radius: 0, weight: 0, fillColor: "#2563eb", fillOpacity: 0.12, interactive: false }).addTo(map);
+          youDot = L.circleMarker([lat, lng], { radius: 8, color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1, interactive: false }).addTo(map);
+        }
+        youDot.setLatLng([lat, lng]);
+        youRing.setLatLng([lat, lng]);
+        youRing.setRadius(accuracy && accuracy < 1000 ? accuracy : 0);
+      }
+
       // Try to center on user's current location if allowed
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -120,6 +133,7 @@
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             map.setView([lat, lng], 13);
+            showYou(lat, lng, pos.coords.accuracy);
           },
           () => {
             // ignore error, keep default
@@ -559,6 +573,7 @@
         } else if (travelHeading != null) {
           lastDriveHeading = travelHeading;
         }
+        showYou(latitude, longitude, pos.coords.accuracy);
         lastDrivePos = { lat: latitude, lng: longitude };
 
         // speed comes from the GPS in m/s (null if the device can't

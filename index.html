@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- App version: 1.10.13 — see CHANGELOG.md for history -->
+<!-- App version: 1.11.2 — see CHANGELOG.md for history -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -43,6 +43,9 @@
       <div id="nearbyPane">
         <h2>Latest Nearby News</h2>
         <div id="newsList" class="news-list"></div>
+        <div style="text-align: center; margin: 12px 0;">
+          <button id="nearbyMoreBtn" class="explore-btn" type="button" style="display: none;">Show more</button>
+        </div>
       </div>
       <div id="explorePane" style="display:none">
         <button id="refreshExplore" class="explore-btn" type="button">🔄 Refresh</button>
@@ -58,6 +61,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="firebaseConfig.js"></script>
+    <script src="geohash.js"></script>
     <script src="credibility.js"></script>
     <script src="explore.js"></script>
     <script src="nav.js"></script>
@@ -268,16 +272,31 @@
             .limit(20)
             .get();
 
+          // Real "near me": besides the 20 latest posts, also fetch posts in
+          // the user's geohash cells (about a 15 km area), so a nearby post
+          // is not missed just because newer posts exist elsewhere.
+          let allDocs = snap.docs;
+          if (userLocation && typeof Geohash !== "undefined") {
+            const cells = Geohash.around(userLocation.lat, userLocation.lng, 5);
+            const parts = await Promise.all(cells.map((c) =>
+              db.collection("posts").orderBy("geohash").startAt(c).endAt(c + "\uf8ff").limit(15).get()
+                .then((s) => s.docs)
+                .catch((e) => { console.warn("Nearby query failed:", e); return []; })));
+            const byId = new Map(allDocs.map((d) => [d.id, d]));
+            parts.forEach((arr) => arr.forEach((d) => byId.set(d.id, d)));
+            allDocs = Array.from(byId.values());
+          }
+
           listEl.textContent = "";
 
-          if (snap.empty) {
+          if (!allDocs.length) {
             listEl.textContent = "No news found.";
             return;
           }
 
           // Admin-flagged misleading posts are hidden from the feed
           // (still reachable by direct link, where they carry a warning).
-          const docs = snap.docs.filter((d) => d.data().adminLabel !== "fake");
+          const docs = allDocs.filter((d) => d.data().adminLabel !== "fake");
 
           // Sort by distance if userLocation present
           let sortedDocs = docs;
@@ -323,14 +342,26 @@
                 return { doc, dKm };
               })
               .sort((a, b) => a.dKm - b.dKm)
-              .map((x) => x.doc);
+              .map((x) => x.doc)
+              .slice(0, 40);
           }
 
-          const frag = document.createDocumentFragment();
-          sortedDocs.forEach((doc) => {
-            frag.appendChild(renderNewsCard(doc.id, doc.data()));
-          });
-          listEl.appendChild(frag);
+          // Show 20 at a time; "Show more" reveals the rest of what was
+          // already fetched, so it costs no extra Firestore reads.
+          const PAGE = 20;
+          let shown = 0;
+          const moreBtn = document.getElementById("nearbyMoreBtn");
+          const renderPage = () => {
+            const frag = document.createDocumentFragment();
+            sortedDocs.slice(shown, shown + PAGE).forEach((doc) => {
+              frag.appendChild(renderNewsCard(doc.id, doc.data()));
+            });
+            listEl.appendChild(frag);
+            shown += PAGE;
+            moreBtn.style.display = shown < sortedDocs.length ? "" : "none";
+          };
+          moreBtn.onclick = renderPage;
+          renderPage();
         } catch (e) {
           console.error("Home load error:", e);
           listEl.textContent = "Error loading news.";
@@ -351,7 +382,7 @@
             loadNews();
             // Fix: opening Explore before the GPS fix arrived left it
             // without urgency; refresh it once location is known.
-            if (exploreLoaded) loadExplore();
+            if (exploreLoaded) loadExplore(true); // refetch: now includes nearby posts
           },
           (err) => {
             console.warn("Geolocation error:", err);
@@ -384,7 +415,7 @@
           uEl.textContent = "Loading..."; fEl.textContent = "";
         }
         try {
-          if (!exploreDocs || forceFetch) exploreDocs = await Explore.fetchCandidates(db);
+          if (!exploreDocs || forceFetch) exploreDocs = await Explore.fetchCandidates(db, userLocation);
           if (!exploreDocs.length) {
             uEl.textContent = "";
             fEl.textContent = "No posts found yet. Create the first one from the Create tab!";
@@ -414,6 +445,10 @@
       document.getElementById("tabNearby").addEventListener("click", () => showTab("nearby"));
       document.getElementById("tabExplore").addEventListener("click", () => showTab("explore"));
       document.getElementById("refreshExplore").addEventListener("click", () => loadExplore(true));
+
+      // Cross-device interest sync: when the profile is pulled after login,
+      // re-rank Explore with it.
+      Explore.initSync(db, () => { if (exploreLoaded) loadExplore(); });
 
       document.addEventListener("DOMContentLoaded", initHome);
     </script>

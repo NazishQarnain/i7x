@@ -85,6 +85,13 @@
         </div>
 
         <button
+          id="backfillGeohashBtn"
+          class="small-btn"
+          type="button"
+        >
+          Add location index to old posts
+        </button>
+        <button
           id="importRandomNewsBtn"
           class="small-btn"
           style="margin-bottom: 8px;"
@@ -130,6 +137,7 @@
          incomplete) firebaseConfig instead of the shared one — any
          future config change (e.g. storage bucket) would silently not
          apply here. Now uses the single shared file like every other page. -->
+    <script src="geohash.js"></script>
     <script src="firebaseConfig.js"></script>
 
     <!-- Navbar JS -->
@@ -853,6 +861,36 @@
 
         document.getElementById("refreshReportedBtn").addEventListener("click", () => { if (isAdmin) loadReported(); });
         document.getElementById("exportTrainingBtn").addEventListener("click", () => { if (isAdmin) exportTrainingCsv(); });
+
+        const backfillBtn = document.getElementById("backfillGeohashBtn");
+        if (backfillBtn) {
+          backfillBtn.addEventListener("click", async () => {
+            if (!isAdmin) return;
+            if (!confirm("Add a geohash to every old post that has a real location? Safe to run again.")) return;
+            backfillBtn.disabled = true; backfillBtn.textContent = "Working...";
+            try {
+              let last = null, scanned = 0, updated = 0;
+              for (;;) {
+                let q = db.collection("posts").orderBy("createdAt", "desc").limit(300);
+                if (last) q = q.startAfter(last);
+                const snap = await q.get();
+                if (snap.empty) break;
+                const batch = db.batch(); let n = 0;
+                snap.forEach((d) => {
+                  const x = d.data(), l = x.location;
+                  if (!x.geohash && l && typeof l.latitude === "number" && !(l.latitude === 0 && l.longitude === 0)) {
+                    batch.update(d.ref, { geohash: Geohash.encode(l.latitude, l.longitude, 9) }); n++;
+                  }
+                });
+                if (n) await batch.commit();
+                updated += n; scanned += snap.size; last = snap.docs[snap.docs.length - 1];
+                if (snap.size < 300) break;
+              }
+              alert("Done. Scanned " + scanned + " posts, updated " + updated + ".");
+            } catch (e) { alert("Backfill failed: " + e.message); }
+            backfillBtn.disabled = false; backfillBtn.textContent = "Add location index to old posts";
+          });
+        }
 
         if (importRandomNewsBtn) {
           importRandomNewsBtn.addEventListener("click", () => {

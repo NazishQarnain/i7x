@@ -24,6 +24,52 @@ const Explore = (() => {
   function bump(post, type) {
     const w = read("i7x_interest", {}); const c = cat(post);
     w[c] = Math.max(-10, Math.min(30, (w[c] || 0) + DELTA[type])); write("i7x_interest", w);
+    touch();
+  }
+
+  // ---- Cross-device interest sync (users/{uid}/prefs/interest) ----
+  // Local weights stay the source of truth; when logged in they are pushed
+  // (debounced) and pulled on login. The newer timestamp wins.
+  let syncDb = null, syncCb = null, pushTimer = null;
+  function touch() { write("i7x_interest_ts", Date.now()); schedulePush(); }
+  function schedulePush() {
+    if (!syncDb) return;
+    clearTimeout(pushTimer); pushTimer = setTimeout(pushPrefs, 2000);
+  }
+  const prefsRef = (u) => syncDb.collection("users").doc(u.uid).collection("prefs").doc("interest");
+  async function pushPrefs() {
+    const u = firebase.auth && firebase.auth().currentUser;
+    if (!u || !syncDb) return;
+    try { await prefsRef(u).set({
+        weights: read("i7x_interest", {}),
+        hidden: read("i7x_hidden", []).slice(-100),
+        updatedMs: Number(read("i7x_interest_ts", 0)) || 0
+      }); }
+    catch (e) { console.warn("Interest sync (push):", e); }
+  }
+  async function pullPrefs(u) {
+    try {
+      const s = await prefsRef(u).get();
+      const localTs = Number(read("i7x_interest_ts", 0)) || 0;
+      if (s.exists) {
+        const d = s.data(), remoteTs = Number(d.updatedMs) || 0;
+        if (remoteTs > localTs) {
+          const clean = {}; // never trust remote numbers blindly
+          Object.keys(d.weights || {}).slice(0, 30).forEach((k) => {
+            const v = Number(d.weights[k]); if (isFinite(v)) clean[k] = Math.max(-10, Math.min(30, v));
+          });
+          write("i7x_interest", clean); write("i7x_interest_ts", remoteTs);
+          if (Array.isArray(d.hidden)) {
+            write("i7x_hidden", d.hidden.filter((x) => typeof x === "string" && x.length < 64).slice(-100));
+          }
+          if (syncCb) syncCb();
+        } else if (localTs > remoteTs) pushPrefs();
+      } else if (localTs) pushPrefs();
+    } catch (e) { console.warn("Interest sync (pull):", e); }
+  }
+  function initSync(db, cb) {
+    syncDb = db; syncCb = cb;
+    if (firebase.auth) firebase.auth().onAuthStateChanged((u) => { if (u) pullPrefs(u); });
   }
   function dismiss(id, post) {
     const d = read("i7x_hidden", []); if (!d.includes(id)) d.push(id);
@@ -63,12 +109,21 @@ const Explore = (() => {
     const forYou = rows.filter((r) => !ids.has(r.doc.id)).sort((a, b) => b.total - a.total);
     return { urgent: urgent.map((r) => r.doc), forYou: forYou.map((r) => r.doc) };
   }
-  async function fetchCandidates(db) {
+  async function fetchCandidates(db, loc) {
     // No date cut-off: the 7-day window used before returned nothing when
     // the newest posts were older than a week (e.g. imported or test data).
     // Age is already handled by the freshness/urgency decay in score().
     const snap = await db.collection("posts").orderBy("createdAt", "desc").limit(100).get();
-    return snap.docs;
+    if (!loc || typeof Geohash === "undefined") return snap.docs;
+    // Also pull posts physically near the user, so a nearby hazard is not
+    // missed just because 100 newer posts exist elsewhere.
+    const byId = new Map(snap.docs.map((d) => [d.id, d]));
+    const cells = Geohash.around(loc.lat, loc.lng, 5);
+    const parts = await Promise.all(cells.map((c) =>
+      db.collection("posts").orderBy("geohash").startAt(c).endAt(c + "\uf8ff").limit(15).get()
+        .then((s) => s.docs).catch(() => [])));
+    parts.forEach((arr) => arr.forEach((d) => byId.set(d.id, d)));
+    return Array.from(byId.values());
   }
   // Per-user liked/saved ids: fetched ONCE per session (2 reads total)
   // instead of 2 reads per card, then shared by every card.
@@ -166,5 +221,5 @@ const Explore = (() => {
     el.appendChild(bar);
   }
   const wasSeen = (id) => read("i7x_seen", []).includes(id);
-  return { rank, fetchCandidates, mountActions, markSeen, bump, wasSeen };
+  return { rank, fetchCandidates, mountActions, markSeen, bump, wasSeen, initSync };
 })();

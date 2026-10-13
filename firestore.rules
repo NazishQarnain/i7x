@@ -109,6 +109,16 @@ service cloud.firestore {
       allow read, create: if isOwner(uid);
     }
 
+    // Interest profile for cross-device sync (one doc, small, owner only).
+    match /users/{uid}/prefs/{prefId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && prefId == "interest" &&
+        request.resource.data.keys().hasOnly(["weights", "updatedMs", "hidden"]) &&
+        request.resource.data.weights is map &&
+        request.resource.data.weights.size() <= 30 &&
+        request.resource.data.get("hidden", []).size() <= 100;
+    }
+
     // Liked / saved posts: private to the user.
     match /users/{uid}/likes/{postId} {
       allow read, write: if isOwner(uid);

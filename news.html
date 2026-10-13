@@ -118,6 +118,7 @@
           const data = doc.data();
           // Count an "open" for interest only the first time, so refreshing
           // the page can't inflate a category's weight.
+          Explore.initSync(db);
           if (!Explore.wasSeen(id)) Explore.bump(data, "open");
           Explore.markSeen(id);
           // Wait for the optional ML model, but never longer than 1.5 s.

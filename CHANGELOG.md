@@ -4,6 +4,46 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.11.2 — Map page
+
+- Fixed: the "Start Drive Mode" button sat on top of the Leaflet /
+  OpenStreetMap credit line and hid part of it (the map license requires
+  the credit to stay visible). The buttons are lifted above it.
+- Added: a blue "you are here" dot with an accuracy ring on the map. It
+  follows you during Drive Mode, which previously showed no position marker.
+
+## v1.11.1 — Synced "Not interested" + Show more
+
+- Added: posts you hide with "Not interested" now sync across devices
+  together with your interest profile (up to 100 ids).
+- Added: the home Nearby feed shows 20 posts at a time with a
+  **Show more** button for the rest of the posts already fetched
+  (no extra Firestore reads).
+- Rules: the `prefs/interest` doc may now also contain `hidden` (max 100).
+  **Redeploy `firestore.rules`.**
+
+## v1.11.0 — Firebase: real "near me" feed + synced interests
+
+- Added: **location index (geohash)**. New posts store a `geohash`; the home
+  Nearby feed and Explore also query the 9 geohash cells around you (about
+  a 15 km area), merged with the 20/100 latest posts. A nearby post is no
+  longer missed because newer posts exist elsewhere. New file `geohash.js`.
+- Added: admin button **"Add location index to old posts"** (run once; safe
+  to run again) to give existing posts a geohash.
+- Added: **interest profile sync**. Explore interests are saved to
+  `users/{uid}/prefs/interest` when logged in and pulled on login, so your
+  preferences follow you across devices. The newer copy wins; remote
+  values are clamped before use.
+- Rules: new `users/{uid}/prefs/interest` (owner only, max 30 categories).
+  **Redeploy `firestore.rules`.**
+- Cost note: the home feed now reads up to ~20 + 135 posts and Explore up
+  to ~100 + 135, only counting posts inside your cells.
+
+## v1.10.14 — Explore buttons layout
+
+- Fixed: the Like / Save / Report / Not interested buttons wrapped into a
+  ragged second row on narrow cards. They now sit in a tidy 2x2 grid.
+
 ## v1.10.13 — Home feed polish
 
 - Fixed: distances on feed cards read "0 km (6 m)" and "1193.5 km

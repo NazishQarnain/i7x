@@ -486,7 +486,7 @@ button.full-width {
 .drive-mode-btn {
   position: absolute;
   z-index: 500;
-  bottom: 12px;
+  bottom: 34px; /* above the Leaflet/OpenStreetMap credit line */
   right: 12px;
   border-radius: 999px;
   padding: 10px 16px;
@@ -510,7 +510,7 @@ button.full-width {
 }
 
 .recenter-btn {
-  bottom: 68px;
+  bottom: 90px;
   background: #2563eb;
 }
 
@@ -985,7 +985,8 @@ body.dark textarea:focus-visible {
 .home-tab{flex:1;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:transparent;color:inherit;font-weight:600;cursor:pointer}
 .home-tab.active{background:#2563eb;border-color:#2563eb;color:#fff}
 .explore-heading{margin:14px 0 8px;font-size:1rem}
-.explore-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.explore-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.explore-actions .explore-btn{width:100%;text-align:center;white-space:nowrap}
 .explore-btn{padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:transparent;color:inherit;font-size:.8rem;cursor:pointer}
 .explore-btn:disabled{opacity:.5}
 
