@@ -4,6 +4,18 @@ All notable changes to i7x — Nearby News & Alert System are recorded here,
 newest first. Current version is also shown in the app itself (open the
 side menu — bottom of the list).
 
+## v1.11.3 — Mobile fixes
+
+- Fixed (map): on phones the map was taller than the visible screen, so
+  the **Start Drive Mode** button and the map credit were cut off at the
+  bottom. The map now uses the visible height.
+- Fixed (Account, Admin): tables only showed the Title column on a phone;
+  Created, Actions, Open and Delete needed sideways scrolling. On phones
+  each row is now a card with every value and button visible.
+- Fixed (Admin): rows were very tall and mostly empty on phones because the
+  hidden columns still made them tall.
+- Improved: the "Nearby News & Alert System" heading is smaller on phones.
+
 ## v1.11.2 — Map page
 
 - Fixed: the "Start Drive Mode" button sat on top of the Leaflet /

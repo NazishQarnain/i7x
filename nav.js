@@ -1,7 +1,7 @@
 // App version — bump this + add an entry to CHANGELOG.md whenever a
 // meaningful set of changes ships, so it's always possible to tell which
 // version of the code is live just by opening the side menu.
-const APP_VERSION = "1.11.2";
+const APP_VERSION = "1.11.3";
 
 document.addEventListener("DOMContentLoaded", () => {
   const menuBtn = document.getElementById("menuToggle");
@@ -107,3 +107,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+// Mobile tables: copy each column header into a data-label on its cells so
+// the stacked-card layout can show "CREATED", "ACTIONS"... above each value.
+// A MutationObserver keeps it working for tables the pages render later.
+(function () {
+  let queued = false;
+  function labelTables() {
+    queued = false;
+    document.querySelectorAll("table.admin-table").forEach((t) => {
+      const heads = Array.from(t.querySelectorAll("thead th")).map((h) => h.textContent.trim());
+      t.querySelectorAll("tbody tr").forEach((tr) => {
+        Array.from(tr.children).forEach((td, i) => {
+          if (td.tagName === "TD" && td.dataset.label === undefined) td.dataset.label = heads[i] || "";
+        });
+      });
+    });
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(labelTables); } }
+  if (document.body) {
+    new MutationObserver(queue).observe(document.body, { childList: true, subtree: true });
+    queue();
+  }
+})();

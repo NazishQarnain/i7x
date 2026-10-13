@@ -1,5 +1,5 @@
 // Nearby News & Alert System - Optimized app.js with image compression + reverse geocoding
-// App version: 1.11.2 — see CHANGELOG.md for history
+// App version: 1.11.3 — see CHANGELOG.md for history
 
 document.addEventListener("DOMContentLoaded", () => {
   const $ = (id) => document.getElementById(id);
